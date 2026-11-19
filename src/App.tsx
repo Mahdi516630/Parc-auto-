@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { LogOut, Moon, Shield, Sun } from 'lucide-react';
 import {
   ApiError,
@@ -144,19 +144,29 @@ export default function App() {
     refreshSession();
   }, [refreshSession]);
 
+  const userRef = useRef<UserRecord | null>(user);
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  const userId = user?.id;
+  const userStatus = user?.status;
+  const canManageUsers = user?.permissions.manageUsers;
+
   // Real-time Server-Sent Events synchronization
   useEffect(() => {
-    if (!token || !user) return;
+    if (!token || !userId) return;
     const source = new EventSource(`/api/events?token=${encodeURIComponent(token)}`);
 
     const onUsersUpdated = () => {
       refreshSession();
     };
     const onOrdersUpdated = () => {
-      if (user.status === 'approved') {
-        loadOrders(user);
-        if (user.permissions.manageUsers) {
-          loadAdminData(user);
+      const current = userRef.current;
+      if (current && current.status === 'approved') {
+        loadOrders(current);
+        if (current.permissions.manageUsers) {
+          loadAdminData(current);
         }
       }
     };
@@ -174,7 +184,7 @@ export default function App() {
       source.removeEventListener('roles_updated', onRolesUpdated);
       source.close();
     };
-  }, [token, user, refreshSession, loadOrders, loadAdminData]);
+  }, [token, userId, userStatus, canManageUsers, refreshSession, loadOrders, loadAdminData]);
 
   const handleAuthenticated = async (
     newToken: string,

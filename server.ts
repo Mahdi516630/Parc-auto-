@@ -106,15 +106,15 @@ function mkChecks(count: number): boolean[] {
 // --- Initial Seed Data (Admin account only, zero sample orders/users) ---
 function createSeedDatabase(): DatabaseSchema {
   const now = new Date().toISOString();
-  const mahdiPw = hashPassword('protocole2026');
+  const sahalPw = hashPassword('protocole2026');
   const adminRole = DEFAULT_ROLES.find((r) => r.id === 'admin')!;
 
   const users: StoredUser[] = [
     {
-      id: 'user-mahdi',
-      username: 'mahdi',
-      email: 'mahdiyacoubali318@gmail.com',
-      fullName: 'Mahdi Yacoub Ali',
+      id: 'user-sahal',
+      username: 'sahal',
+      email: 'sahalhoch@gmail.com',
+      fullName: 'Sahal',
       department: 'Direction du Parc Auto Protocole',
       roleId: 'admin',
       status: 'approved',
@@ -122,8 +122,8 @@ function createSeedDatabase(): DatabaseSchema {
       createdAt: now,
       validatedAt: now,
       validatedBy: 'Système',
-      passwordSalt: mahdiPw.salt,
-      passwordHash: mahdiPw.hash,
+      passwordSalt: sahalPw.salt,
+      passwordHash: sahalPw.hash,
     },
   ];
 
@@ -766,6 +766,12 @@ async function startServer() {
       if (password.length < 6) {
         res.status(400).json({
           error: 'Le mot de passe doit contenir au moins 6 caractères.',
+        });
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        res.status(400).json({
+          error: 'Veuillez saisir une adresse e-mail valide.',
         });
         return;
       }

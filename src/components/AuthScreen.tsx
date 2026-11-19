@@ -81,6 +81,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       setError('Tous les champs obligatoires doivent être renseignés.');
       return;
     }
+    if (!/^[a-z0-9._-]{3,32}$/i.test(username.trim())) {
+      setError('L’identifiant doit comporter 3 à 32 caractères (lettres, chiffres, . _ -).');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setError('Veuillez saisir une adresse e-mail valide.');
+      return;
+    }
     if (regPassword.length < 6) {
       setError('Le mot de passe doit contenir au moins 6 caractères.');
       return;
