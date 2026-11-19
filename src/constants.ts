@@ -1,4 +1,10 @@
-import type { PermissionKey, RoleDefinition, UserPermissions } from './types';
+import type {
+  CoreFieldConfig,
+  FormConfig,
+  PermissionKey,
+  RoleDefinition,
+  UserPermissions,
+} from './types';
 
 export const CHECKLIST_ITEMS: readonly string[] = [
   'Vérification de batterie',
@@ -37,6 +43,93 @@ export const SHORT_CHECKLIST_LABELS: readonly string[] = [
   '15. Niveaux batterie',
   '16. Essai routier',
 ] as const;
+
+export function getShortChecklistLabel(label: string, index: number): string {
+  const defaultIdx = CHECKLIST_ITEMS.indexOf(label);
+  if (defaultIdx !== -1 && SHORT_CHECKLIST_LABELS[defaultIdx]) {
+    const base = SHORT_CHECKLIST_LABELS[defaultIdx].replace(/^\d+\.\s*/, '');
+    return `${index + 1}. ${base}`;
+  }
+  const clean = label.trim();
+  const truncated = clean.length > 20 ? `${clean.slice(0, 18)}…` : clean;
+  return `${index + 1}. ${truncated}`;
+}
+
+export const DEFAULT_CORE_FIELDS: CoreFieldConfig[] = [
+  {
+    key: 'marque',
+    label: 'Marque',
+    placeholder: 'ex. Renault',
+    required: true,
+    visible: true,
+  },
+  {
+    key: 'modele',
+    label: 'Modèle',
+    placeholder: 'ex. Safrane',
+    required: true,
+    visible: true,
+  },
+  {
+    key: 'immat',
+    label: 'N° d’immatriculation',
+    placeholder: 'ex. 121',
+    required: true,
+    visible: true,
+  },
+  {
+    key: 'vin',
+    label: 'VIN (Numéro de châssis)',
+    placeholder: 'ex. VF1ABLACA3CC263895',
+    required: false,
+    visible: true,
+  },
+  {
+    key: 'km',
+    label: 'Kilométrage (km)',
+    placeholder: 'ex. 14011',
+    required: true,
+    visible: true,
+  },
+  {
+    key: 'date',
+    label: 'Date des travaux',
+    placeholder: '',
+    required: true,
+    visible: true,
+  },
+  {
+    key: 'remarque',
+    label: 'Remarque',
+    placeholder: 'Observations, pièces remplacées ou recommandations de suivi…',
+    required: false,
+    visible: true,
+  },
+  {
+    key: 'tech',
+    label: 'Nom du technicien',
+    placeholder: 'ex. M. Diallo',
+    required: false,
+    visible: true,
+  },
+  {
+    key: 'ctrl',
+    label: 'Nom du contrôleur',
+    placeholder: 'ex. M. Mensah',
+    required: false,
+    visible: true,
+  },
+];
+
+export function createDefaultFormConfig(): FormConfig {
+  return {
+    coreFields: DEFAULT_CORE_FIELDS.map((f) => ({ ...f })),
+    customFields: [],
+    checklistItems: [...CHECKLIST_ITEMS],
+    updatedAt: new Date().toISOString(),
+    updatedBy: 'Système',
+  };
+}
 
 export const PERMISSION_DEFINITIONS: Array<{
   key: PermissionKey;

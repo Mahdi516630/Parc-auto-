@@ -35,6 +35,45 @@ export interface UserRecord {
   lastLoginAt?: string;
 }
 
+export type CustomFieldType = 'text' | 'date' | 'checkbox' | 'number' | 'textarea';
+
+export interface CustomFieldDefinition {
+  id: string;
+  label: string;
+  type: CustomFieldType;
+  required: boolean;
+  placeholder?: string;
+  showInTable: boolean;
+  enabled: boolean;
+}
+
+export type CoreFieldKey =
+  | 'marque'
+  | 'modele'
+  | 'immat'
+  | 'vin'
+  | 'km'
+  | 'date'
+  | 'remarque'
+  | 'tech'
+  | 'ctrl';
+
+export interface CoreFieldConfig {
+  key: CoreFieldKey;
+  label: string;
+  placeholder: string;
+  required: boolean;
+  visible: boolean;
+}
+
+export interface FormConfig {
+  coreFields: CoreFieldConfig[];
+  customFields: CustomFieldDefinition[];
+  checklistItems: string[];
+  updatedAt: string;
+  updatedBy?: string;
+}
+
 export interface RepairOrder {
   id: number;
   date: string;
@@ -47,6 +86,7 @@ export interface RepairOrder {
   remarque: string;
   tech: string;
   ctrl: string;
+  customValues?: Record<string, string | boolean>;
   createdById: string;
   createdByName: string;
   createdAt: string;
@@ -68,6 +108,7 @@ export interface ActivityLog {
     | 'user_suspended'
     | 'permissions_updated'
     | 'role_updated'
+    | 'form_config_updated'
     | 'order_created'
     | 'order_updated'
     | 'order_deleted';
@@ -81,6 +122,7 @@ export type SortDirection = 'desc' | 'asc';
 export interface AdminOverviewPayload {
   users: UserRecord[];
   roles: RoleDefinition[];
+  formConfig: FormConfig;
   logs: ActivityLog[];
   stats: {
     totalUsers: number;
@@ -93,6 +135,7 @@ export interface AdminOverviewPayload {
     completeOrders: number;
     incompleteOrders: number;
     completionRate: number;
+    checklistCount: number;
     brandBreakdown: Array<{ brand: string; count: number }>;
     authorBreakdown: Array<{ name: string; count: number }>;
     checklistGapBreakdown: Array<{ label: string; missingCount: number }>;

@@ -1,5 +1,6 @@
 import type {
   AdminOverviewPayload,
+  FormConfig,
   RepairOrder,
   RoleDefinition,
   UserPermissions,
@@ -103,8 +104,19 @@ export async function registerUser(payload: {
   });
 }
 
-export async function fetchMe(): Promise<{ user: UserRecord; roles: RoleDefinition[] }> {
-  return request<{ user: UserRecord; roles: RoleDefinition[] }>('/api/auth/me');
+export async function fetchMe(): Promise<{
+  user: UserRecord;
+  roles: RoleDefinition[];
+  formConfig: FormConfig;
+}> {
+  return request<{ user: UserRecord; roles: RoleDefinition[]; formConfig: FormConfig }>(
+    '/api/auth/me',
+  );
+}
+
+export async function fetchFormConfig(): Promise<FormConfig> {
+  const res = await request<{ formConfig: FormConfig }>('/api/form-config');
+  return res.formConfig;
 }
 
 export async function fetchOrders(): Promise<RepairOrder[]> {
@@ -112,7 +124,7 @@ export async function fetchOrders(): Promise<RepairOrder[]> {
   return res.orders;
 }
 
-export async function createOrder(payload: {
+export interface OrderSavePayload {
   date: string;
   marque: string;
   modele: string;
@@ -123,7 +135,10 @@ export async function createOrder(payload: {
   remarque: string;
   tech: string;
   ctrl: string;
-}): Promise<RepairOrder> {
+  customValues: Record<string, string | boolean>;
+}
+
+export async function createOrder(payload: OrderSavePayload): Promise<RepairOrder> {
   const res = await request<{ order: RepairOrder }>('/api/orders', {
     method: 'POST',
     body: JSON.stringify(payload),
@@ -131,21 +146,7 @@ export async function createOrder(payload: {
   return res.order;
 }
 
-export async function updateOrder(
-  id: number,
-  payload: {
-    date: string;
-    marque: string;
-    modele: string;
-    immat: string;
-    vin: string;
-    km: number;
-    checks: boolean[];
-    remarque: string;
-    tech: string;
-    ctrl: string;
-  },
-): Promise<RepairOrder> {
+export async function updateOrder(id: number, payload: OrderSavePayload): Promise<RepairOrder> {
   const res = await request<{ order: RepairOrder }>(`/api/orders/${id}`, {
     method: 'PUT',
     body: JSON.stringify(payload),
@@ -223,4 +224,28 @@ export async function adminDeleteRole(roleId: string): Promise<AdminOverviewPayl
     method: 'DELETE',
   });
   return res.overview;
+}
+
+export async function adminUpdateFormConfig(
+  config: FormConfig,
+): Promise<{ formConfig: FormConfig; overview: AdminOverviewPayload }> {
+  return request<{ formConfig: FormConfig; overview: AdminOverviewPayload }>(
+    '/api/admin/form-config',
+    {
+      method: 'PUT',
+      body: JSON.stringify(config),
+    },
+  );
+}
+
+export async function adminResetFormConfig(): Promise<{
+  formConfig: FormConfig;
+  overview: AdminOverviewPayload;
+}> {
+  return request<{ formConfig: FormConfig; overview: AdminOverviewPayload }>(
+    '/api/admin/form-config/reset',
+    {
+      method: 'POST',
+    },
+  );
 }

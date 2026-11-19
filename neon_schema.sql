@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS repair_orders (
   remarque TEXT NOT NULL DEFAULT '',
   tech TEXT NOT NULL DEFAULT '',
   ctrl TEXT NOT NULL DEFAULT '',
+  custom_values JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_by_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
   created_by_name TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -53,7 +54,15 @@ CREATE TABLE IF NOT EXISTS repair_orders (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 4. Journal d'activité temps réel (audit des validations, droits et ordres)
+-- 4. Configuration dynamique du formulaire d'enregistrement (colonnes & points de contrôle)
+CREATE TABLE IF NOT EXISTS form_config (
+  id TEXT PRIMARY KEY,
+  config JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_by TEXT
+);
+
+-- 5. Journal d'activité temps réel (audit des validations, droits et ordres)
 CREATE TABLE IF NOT EXISTS activity_logs (
   id UUID PRIMARY KEY,
   timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),

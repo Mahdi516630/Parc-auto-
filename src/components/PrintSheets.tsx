@@ -1,8 +1,28 @@
 import React from 'react';
-import { CHECKLIST_ITEMS, formatDateFr, padOrderId } from '../constants';
-import type { RepairOrder } from '../types';
+import { createDefaultFormConfig, formatDateFr, padOrderId } from '../constants';
+import type { CustomFieldDefinition, FormConfig, RepairOrder } from '../types';
 
-export const OfficialSheet: React.FC<{ order: RepairOrder }> = ({ order }) => {
+function formatCustomPrintValue(
+  field: CustomFieldDefinition,
+  val: string | boolean | undefined,
+): string {
+  if (field.type === 'checkbox') {
+    return val === true ? '☑ Oui' : '☐ Non';
+  }
+  const str = String(val || '').trim();
+  if (!str) return '—';
+  if (field.type === 'date') return formatDateFr(str);
+  return str;
+}
+
+export const OfficialSheet: React.FC<{ order: RepairOrder; formConfig?: FormConfig }> = ({
+  order,
+  formConfig,
+}) => {
+  const cfg = formConfig || createDefaultFormConfig();
+  const checklistItems = cfg.checklistItems;
+  const activeCustomFields = cfg.customFields.filter((f) => f.enabled);
+
   return (
     <div className="sheet">
       <div style={{ textAlign: 'center', fontWeight: 700, fontSize: '11pt' }}>
@@ -44,11 +64,24 @@ export const OfficialSheet: React.FC<{ order: RepairOrder }> = ({ order }) => {
         </tbody>
       </table>
 
+      {activeCustomFields.length > 0 && (
+        <table style={{ margin: '6px 0 10px' }}>
+          <tbody>
+            {activeCustomFields.map((field) => (
+              <tr key={field.id}>
+                <td style={{ fontWeight: 700, width: '38%' }}>{field.label}</td>
+                <td>{formatCustomPrintValue(field, order.customValues?.[field.id])}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
       <b>Description du travail</b>
       <table style={{ margin: '6px 0' }}>
         <tbody>
-          {CHECKLIST_ITEMS.map((item, index) => (
-            <tr key={item}>
+          {checklistItems.map((item, index) => (
+            <tr key={`${index}-${item}`}>
               <td>{item} :</td>
               <td style={{ width: '44px', textAlign: 'center', fontSize: '13pt' }}>
                 {order.checks[index] ? '☑' : '☐'}
@@ -89,11 +122,14 @@ export const OfficialSheet: React.FC<{ order: RepairOrder }> = ({ order }) => {
   );
 };
 
-export const PrintSheetsContainer: React.FC<{ orders: RepairOrder[] }> = ({ orders }) => {
+export const PrintSheetsContainer: React.FC<{
+  orders: RepairOrder[];
+  formConfig?: FormConfig;
+}> = ({ orders, formConfig }) => {
   return (
     <div id="print-root">
       {orders.map((order) => (
-        <OfficialSheet key={order.id} order={order} />
+        <OfficialSheet key={order.id} order={order} formConfig={formConfig} />
       ))}
     </div>
   );

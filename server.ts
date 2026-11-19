@@ -10,6 +10,10 @@ import { createServer as createViteServer } from 'vite';
 import type {
   ActivityLog,
   AdminOverviewPayload,
+  CoreFieldConfig,
+  CustomFieldDefinition,
+  CustomFieldType,
+  FormConfig,
   RepairOrder,
   RoleDefinition,
   UserPermissions,
@@ -18,8 +22,10 @@ import type {
 } from './src/types.ts';
 import {
   CHECKLIST_ITEMS,
+  createDefaultFormConfig,
+  DEFAULT_CORE_FIELDS,
   DEFAULT_ROLES,
-  SHORT_CHECKLIST_LABELS,
+  getShortChecklistLabel,
 } from './src/constants.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -44,6 +50,7 @@ interface DatabaseSchema {
   roles: RoleDefinition[];
   orders: RepairOrder[];
   logs: ActivityLog[];
+  formConfig: FormConfig;
 }
 
 interface AuthedRequest extends Request {
@@ -132,7 +139,109 @@ function createSeedDatabase(): DatabaseSchema {
     roles: DEFAULT_ROLES.map((r) => ({ ...r, permissions: { ...r.permissions } })),
     orders: [],
     logs: [],
+    formConfig: createDefaultFormConfig(),
   };
+}
+
+const VALID_CUSTOM_TYPES: CustomFieldType[] = ['text', 'date', 'checkbox', 'number', 'textarea'];
+
+function normalizeFormConfig(raw: unknown, updatedBy?: string): FormConfig {
+  const defaults = createDefaultFormConfig();
+  const obj = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+
+  // Normalize core fields while keeping all 9 canonical keys
+  const rawCore = Array.isArray(obj.coreFields) ? obj.coreFields : [];
+  const coreByKey = new Map<string, Partial<CoreFieldConfig>>();
+  for (const item of rawCore) {
+    if (item && typeof item === 'object' && typeof (item as CoreFieldConfig).key === 'string') {
+      coreByKey.set((item as CoreFieldConfig).key, item as Partial<CoreFieldConfig>);
+    }
+  }
+  const coreFields: CoreFieldConfig[] = DEFAULT_CORE_FIELDS.map((def) => {
+    const incoming = coreByKey.get(def.key);
+    if (!incoming) return { ...def };
+    const label = String(incoming.label || '').trim() || def.label;
+    const placeholder =
+      typeof incoming.placeholder === 'string' ? incoming.placeholder.trim() : def.placeholder;
+    const visible = typeof incoming.visible === 'boolean' ? incoming.visible : def.visible;
+    const required = visible
+      ? typeof incoming.required === 'boolean'
+        ? incoming.required
+        : def.required
+      : false;
+    return {
+      key: def.key,
+      label,
+      placeholder,
+      required,
+      visible,
+    };
+  });
+
+  // Normalize custom columns / fields
+  const rawCustom = Array.isArray(obj.customFields) ? obj.customFields : [];
+  const seenIds = new Set<string>();
+  const customFields: CustomFieldDefinition[] = [];
+  for (const item of rawCustom) {
+    if (!item || typeof item !== 'object') continue;
+    const rec = item as Partial<CustomFieldDefinition>;
+    const label = String(rec.label || '').trim();
+    if (!label) continue;
+    let id = String(rec.id || '')
+      .trim()
+      .replace(/[^a-zA-Z0-9_-]/g, '');
+    if (!id || seenIds.has(id)) {
+      id = `col_${crypto.randomUUID().slice(0, 8)}`;
+    }
+    seenIds.add(id);
+    const type: CustomFieldType = VALID_CUSTOM_TYPES.includes(rec.type as CustomFieldType)
+      ? (rec.type as CustomFieldType)
+      : 'text';
+    customFields.push({
+      id,
+      label,
+      type,
+      required: Boolean(rec.required),
+      placeholder: typeof rec.placeholder === 'string' ? rec.placeholder.trim() : '',
+      showInTable: rec.showInTable !== false,
+      enabled: rec.enabled !== false,
+    });
+  }
+
+  // Normalize checklist items
+  const rawChecklist = Array.isArray(obj.checklistItems) ? obj.checklistItems : [];
+  const checklistItems = rawChecklist
+    .map((item) => String(item || '').trim())
+    .filter((item) => item.length > 0);
+
+  return {
+    coreFields,
+    customFields,
+    checklistItems: checklistItems.length > 0 ? checklistItems : defaults.checklistItems,
+    updatedAt: new Date().toISOString(),
+    updatedBy: updatedBy || defaults.updatedBy,
+  };
+}
+
+function sanitizeCustomValues(
+  raw: unknown,
+  config: FormConfig,
+  existing: Record<string, string | boolean> = {},
+): Record<string, string | boolean> {
+  const result: Record<string, string | boolean> = { ...existing };
+  const obj = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  for (const field of config.customFields) {
+    if (!(field.id in obj) && !field.enabled) continue;
+    const val = obj[field.id];
+    if (field.type === 'checkbox') {
+      result[field.id] = Boolean(val);
+    } else if (val === undefined || val === null) {
+      if (!(field.id in result)) result[field.id] = '';
+    } else {
+      result[field.id] = String(val).trim();
+    }
+  }
+  return result;
 }
 
 // --- Storage Abstraction (Neon PostgreSQL when DATABASE_URL is set, JSON file fallback otherwise) ---
@@ -164,6 +273,9 @@ function loadJsonDatabase(): DatabaseSchema {
     if (!parsed.users || !parsed.roles || !parsed.orders || !parsed.logs) {
       throw new Error('Corrupt DB shape');
     }
+    if (!parsed.formConfig) {
+      parsed.formConfig = createDefaultFormConfig();
+    }
     return parsed;
   } catch {
     const seed = createSeedDatabase();
@@ -173,7 +285,7 @@ function loadJsonDatabase(): DatabaseSchema {
 }
 
 let db: DatabaseSchema = pgPool
-  ? { users: [], roles: [], orders: [], logs: [] }
+  ? { users: [], roles: [], orders: [], logs: [], formConfig: createDefaultFormConfig() }
   : loadJsonDatabase();
 
 let neonReadyPromise: Promise<void> | null = null;
@@ -185,12 +297,18 @@ async function ensureNeonReady(): Promise<void> {
   neonReadyPromise = (async () => {
     const schemaSql = fs.readFileSync(path.resolve(__dirname, 'neon_schema.sql'), 'utf8');
     await pgPool.query(schemaSql);
+    await pgPool.query(
+      `ALTER TABLE repair_orders ADD COLUMN IF NOT EXISTS custom_values JSONB NOT NULL DEFAULT '{}'::jsonb`,
+    );
 
     const { rows: roleCountRows } = await pgPool.query<{ cnt: string }>(
       'SELECT COUNT(*)::text AS cnt FROM roles',
     );
     const { rows: userCountRows } = await pgPool.query<{ cnt: string }>(
       'SELECT COUNT(*)::text AS cnt FROM users',
+    );
+    const { rows: formCountRows } = await pgPool.query<{ cnt: string }>(
+      "SELECT COUNT(*)::text AS cnt FROM form_config WHERE id = 'default'",
     );
 
     if (Number(roleCountRows[0]?.cnt || 0) === 0 || Number(userCountRows[0]?.cnt || 0) === 0) {
@@ -266,6 +384,16 @@ async function ensureNeonReady(): Promise<void> {
       }
     }
 
+    if (Number(formCountRows[0]?.cnt || 0) === 0) {
+      const defForm = createDefaultFormConfig();
+      await pgPool.query(
+        `INSERT INTO form_config (id, config, updated_at, updated_by)
+         VALUES ('default', $1::jsonb, $2, $3)
+         ON CONFLICT (id) DO NOTHING`,
+        [JSON.stringify(defForm), defForm.updatedAt, defForm.updatedBy || 'Système'],
+      );
+    }
+
     await reloadFromNeon();
   })().catch((err) => {
     neonReadyPromise = null;
@@ -277,7 +405,7 @@ async function ensureNeonReady(): Promise<void> {
 
 async function reloadFromNeon(): Promise<void> {
   if (!pgPool) return;
-  const [rolesRes, usersRes, ordersRes, logsRes] = await Promise.all([
+  const [rolesRes, usersRes, ordersRes, logsRes, formRes] = await Promise.all([
     pgPool.query<{
       id: string;
       label: string;
@@ -313,6 +441,7 @@ async function reloadFromNeon(): Promise<void> {
       remarque: string;
       tech: string;
       ctrl: string;
+      custom_values: Record<string, string | boolean> | null;
       created_by_id: string;
       created_by_name: string;
       created_at: Date | string;
@@ -321,7 +450,7 @@ async function reloadFromNeon(): Promise<void> {
       updated_at: Date | string | null;
     }>(
       `SELECT id, TO_CHAR(work_date, 'YYYY-MM-DD') AS work_date, marque, modele, immat, vin, km,
-              checks, remarque, tech, ctrl, created_by_id, created_by_name, created_at,
+              checks, remarque, tech, ctrl, custom_values, created_by_id, created_by_name, created_at,
               updated_by_id, updated_by_name, updated_at
        FROM repair_orders
        ORDER BY work_date DESC, id DESC`,
@@ -335,7 +464,18 @@ async function reloadFromNeon(): Promise<void> {
       target_label: string;
       details: string | null;
     }>('SELECT * FROM activity_logs ORDER BY timestamp DESC LIMIT 150'),
+    pgPool.query<{
+      config: FormConfig;
+      updated_at: Date | string;
+      updated_by: string | null;
+    }>("SELECT config, updated_at, updated_by FROM form_config WHERE id = 'default'"),
   ]);
+
+  const rawForm = formRes.rows[0]?.config;
+  const loadedForm = rawForm ? normalizeFormConfig(rawForm, formRes.rows[0]?.updated_by || undefined) : createDefaultFormConfig();
+  if (formRes.rows[0]?.updated_at) {
+    loadedForm.updatedAt = new Date(formRes.rows[0].updated_at).toISOString();
+  }
 
   db = {
     roles: rolesRes.rows.map((r) => ({
@@ -373,6 +513,7 @@ async function reloadFromNeon(): Promise<void> {
       remarque: o.remarque,
       tech: o.tech,
       ctrl: o.ctrl,
+      customValues: o.custom_values && typeof o.custom_values === 'object' ? o.custom_values : {},
       createdById: o.created_by_id,
       createdByName: o.created_by_name,
       createdAt: new Date(o.created_at).toISOString(),
@@ -389,6 +530,7 @@ async function reloadFromNeon(): Promise<void> {
       targetLabel: l.target_label,
       details: l.details || undefined,
     })),
+    formConfig: loadedForm,
   };
 }
 
@@ -475,18 +617,26 @@ function buildAdminOverview(): AdminOverviewPayload {
     (u) => u.status === 'suspended' || u.status === 'rejected',
   ).length;
 
+  const checklist = db.formConfig?.checklistItems?.length
+    ? db.formConfig.checklistItems
+    : [...CHECKLIST_ITEMS];
+  const checklistCount = checklist.length;
+
+  const isOrderComplete = (checks: boolean[]) =>
+    checklist.every((_, idx) => Boolean(checks[idx]));
+
   const totalOrders = db.orders.length;
   const ordersThisMonth = db.orders.filter((o) => o.date.startsWith(monthPrefix)).length;
   const ordersToday = db.orders.filter((o) => o.date === todayStr).length;
-  const completeOrders = db.orders.filter((o) => o.checks.every(Boolean)).length;
+  const completeOrders = db.orders.filter((o) => isOrderComplete(o.checks)).length;
   const incompleteOrders = totalOrders - completeOrders;
   const completionRate =
     totalOrders > 0 ? Math.round((completeOrders / totalOrders) * 100) : 100;
 
   const brandMap = new Map<string, number>();
   const authorMap = new Map<string, number>();
-  const completedByItem = new Array<number>(CHECKLIST_ITEMS.length).fill(0);
-  const missingByItem = new Array<number>(CHECKLIST_ITEMS.length).fill(0);
+  const completedByItem = new Array<number>(checklistCount).fill(0);
+  const missingByItem = new Array<number>(checklistCount).fill(0);
   const monthlyMap = new Map<
     string,
     { totalOrders: number; completeOrders: number; incompleteOrders: number }
@@ -499,13 +649,11 @@ function buildAdminOverview(): AdminOverviewPayload {
     const author = (o.createdByName || 'Système').trim();
     authorMap.set(author, (authorMap.get(author) || 0) + 1);
 
-    const isComplete = o.checks.every(Boolean);
-    o.checks.forEach((checked, idx) => {
-      if (idx < CHECKLIST_ITEMS.length) {
-        if (checked) completedByItem[idx] += 1;
-        else missingByItem[idx] += 1;
-      }
-    });
+    const isComplete = isOrderComplete(o.checks);
+    for (let idx = 0; idx < checklistCount; idx++) {
+      if (o.checks[idx]) completedByItem[idx] += 1;
+      else missingByItem[idx] += 1;
+    }
 
     const ym = (o.date || '').slice(0, 7);
     if (/^\d{4}-\d{2}$/.test(ym)) {
@@ -531,22 +679,23 @@ function buildAdminOverview(): AdminOverviewPayload {
     .sort((a, b) => b.count - a.count)
     .slice(0, 6);
 
-  const checklistGapBreakdown = CHECKLIST_ITEMS.map((label, idx) => ({
-    label,
-    missingCount: missingByItem[idx],
-  }))
+  const checklistGapBreakdown = checklist
+    .map((label, idx) => ({
+      label,
+      missingCount: missingByItem[idx],
+    }))
     .filter((item) => item.missingCount > 0)
     .sort((a, b) => b.missingCount - a.missingCount)
     .slice(0, 5);
 
-  const repairTypeBreakdown = CHECKLIST_ITEMS.map((label, idx) => {
+  const repairTypeBreakdown = checklist.map((label, idx) => {
     const completedCount = completedByItem[idx];
     const pendingCount = missingByItem[idx];
     const rate = totalOrders > 0 ? Math.round((completedCount / totalOrders) * 100) : 0;
     return {
       index: idx + 1,
       label,
-      shortLabel: SHORT_CHECKLIST_LABELS[idx] || label,
+      shortLabel: getShortChecklistLabel(label, idx),
       completedCount,
       pendingCount,
       rate,
@@ -601,6 +750,7 @@ function buildAdminOverview(): AdminOverviewPayload {
   return {
     users: db.users.map(sanitizeUser),
     roles: db.roles,
+    formConfig: db.formConfig,
     logs: db.logs.slice(0, 40),
     stats: {
       totalUsers,
@@ -613,6 +763,7 @@ function buildAdminOverview(): AdminOverviewPayload {
       completeOrders,
       incompleteOrders,
       completionRate,
+      checklistCount,
       brandBreakdown,
       authorBreakdown,
       checklistGapBreakdown,
@@ -935,7 +1086,13 @@ async function startServer() {
     res.json({
       user: sanitizeUser(req.currentUser!),
       roles: db.roles,
+      formConfig: db.formConfig,
     });
+  });
+
+  // Active form schema configuration (authenticated users)
+  app.get('/api/form-config', requireAuth, (_req: AuthedRequest, res: Response) => {
+    res.json({ formConfig: db.formConfig });
   });
 
   // --- Shared Central Orders Endpoints ---
@@ -965,36 +1122,66 @@ async function startServer() {
         const modele = String(body.modele || '').trim();
         const immat = String(body.immat || '').trim();
         const vin = String(body.vin || '').trim().toUpperCase();
-        const date = String(body.date || '').trim();
-        const km = Number(body.km);
+        const rawDate = String(body.date || '').trim();
+        const rawKm = body.km === '' || body.km === undefined || body.km === null ? NaN : Number(body.km);
         const remarque = String(body.remarque || '').trim();
         const tech = String(body.tech || '').trim();
         const ctrl = String(body.ctrl || '').trim();
         const rawChecks = Array.isArray(body.checks) ? body.checks : [];
 
-        if (!marque || !modele || !immat || !date) {
-          res.status(400).json({
-            error: 'Marque, modèle, immatriculation et date des travaux sont obligatoires.',
-          });
-          return;
+        const coreMap = new Map(db.formConfig.coreFields.map((f) => [f.key, f]));
+        const coreVals: Record<string, string> = {
+          marque,
+          modele,
+          immat,
+          vin,
+          date: rawDate,
+          remarque,
+          tech,
+          ctrl,
+          km: Number.isNaN(rawKm) ? '' : String(rawKm),
+        };
+
+        for (const cf of db.formConfig.coreFields) {
+          if (cf.visible && cf.required && !coreVals[cf.key]) {
+            res.status(400).json({ error: `Le champ « ${cf.label} » est obligatoire.` });
+            return;
+          }
         }
-        if (Number.isNaN(km) || km < 0) {
+
+        const date = rawDate || new Date().toISOString().slice(0, 10);
+        const km = Number.isNaN(rawKm) ? 0 : rawKm;
+        if (km < 0) {
           res.status(400).json({ error: 'Indiquez un kilométrage valide.' });
           return;
         }
 
-        const checks = Array.from({ length: CHECKLIST_ITEMS.length }, (_, i) =>
-          Boolean(rawChecks[i]),
-        );
+        const customValues = sanitizeCustomValues(body.customValues, db.formConfig);
+        for (const field of db.formConfig.customFields) {
+          if (!field.enabled || !field.required) continue;
+          const v = customValues[field.id];
+          if (field.type === 'checkbox') {
+            if (v !== true) {
+              res.status(400).json({ error: `La case « ${field.label} » doit être cochée.` });
+              return;
+            }
+          } else if (!String(v || '').trim()) {
+            res.status(400).json({ error: `Le champ « ${field.label} » est obligatoire.` });
+            return;
+          }
+        }
+
+        const checklistLen = db.formConfig.checklistItems.length;
+        const checks = Array.from({ length: checklistLen }, (_, i) => Boolean(rawChecks[i]));
         const now = new Date().toISOString();
         let nextId = db.orders.reduce((max, o) => Math.max(max, o.id), 0) + 1;
 
         if (pgPool) {
           const inserted = await pgPool.query<{ id: number }>(
             `INSERT INTO repair_orders (
-               work_date, marque, modele, immat, vin, km, checks, remarque, tech, ctrl,
+               work_date, marque, modele, immat, vin, km, checks, remarque, tech, ctrl, custom_values,
                created_by_id, created_by_name, created_at, updated_by_id, updated_by_name, updated_at
-             ) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11::jsonb,$12,$13,$14,$15,$16,$17)
              RETURNING id`,
             [
               date,
@@ -1007,6 +1194,7 @@ async function startServer() {
               remarque,
               tech,
               ctrl,
+              JSON.stringify(customValues),
               user.id,
               user.fullName,
               now,
@@ -1030,6 +1218,7 @@ async function startServer() {
           remarque,
           tech,
           ctrl,
+          customValues,
           createdById: user.id,
           createdByName: user.fullName,
           createdAt: now,
@@ -1078,27 +1267,59 @@ async function startServer() {
         const modele = String(body.modele || '').trim();
         const immat = String(body.immat || '').trim();
         const vin = String(body.vin || '').trim().toUpperCase();
-        const date = String(body.date || '').trim();
-        const km = Number(body.km);
+        const rawDate = String(body.date || '').trim();
+        const rawKm = body.km === '' || body.km === undefined || body.km === null ? NaN : Number(body.km);
         const remarque = String(body.remarque || '').trim();
         const tech = String(body.tech || '').trim();
         const ctrl = String(body.ctrl || '').trim();
         const rawChecks = Array.isArray(body.checks) ? body.checks : [];
 
-        if (!marque || !modele || !immat || !date) {
-          res.status(400).json({
-            error: 'Marque, modèle, immatriculation et date des travaux sont obligatoires.',
-          });
-          return;
+        const coreVals: Record<string, string> = {
+          marque,
+          modele,
+          immat,
+          vin,
+          date: rawDate,
+          remarque,
+          tech,
+          ctrl,
+          km: Number.isNaN(rawKm) ? '' : String(rawKm),
+        };
+        for (const cf of db.formConfig.coreFields) {
+          if (cf.visible && cf.required && !coreVals[cf.key]) {
+            res.status(400).json({ error: `Le champ « ${cf.label} » est obligatoire.` });
+            return;
+          }
         }
-        if (Number.isNaN(km) || km < 0) {
+
+        const date = rawDate || existing.date || new Date().toISOString().slice(0, 10);
+        const km = Number.isNaN(rawKm) ? existing.km || 0 : rawKm;
+        if (km < 0) {
           res.status(400).json({ error: 'Indiquez un kilométrage valide.' });
           return;
         }
 
-        const checks = Array.from({ length: CHECKLIST_ITEMS.length }, (_, i) =>
-          Boolean(rawChecks[i]),
+        const customValues = sanitizeCustomValues(
+          body.customValues,
+          db.formConfig,
+          existing.customValues || {},
         );
+        for (const field of db.formConfig.customFields) {
+          if (!field.enabled || !field.required) continue;
+          const v = customValues[field.id];
+          if (field.type === 'checkbox') {
+            if (v !== true) {
+              res.status(400).json({ error: `La case « ${field.label} » doit être cochée.` });
+              return;
+            }
+          } else if (!String(v || '').trim()) {
+            res.status(400).json({ error: `Le champ « ${field.label} » est obligatoire.` });
+            return;
+          }
+        }
+
+        const checklistLen = db.formConfig.checklistItems.length;
+        const checks = Array.from({ length: checklistLen }, (_, i) => Boolean(rawChecks[i]));
         const updatedAt = new Date().toISOString();
 
         if (pgPool) {
@@ -1106,8 +1327,9 @@ async function startServer() {
             `UPDATE repair_orders
              SET work_date = $1, marque = $2, modele = $3, immat = $4, vin = $5,
                  km = $6, checks = $7::jsonb, remarque = $8, tech = $9, ctrl = $10,
-                 updated_by_id = $11, updated_by_name = $12, updated_at = $13
-             WHERE id = $14`,
+                 custom_values = $11::jsonb,
+                 updated_by_id = $12, updated_by_name = $13, updated_at = $14
+             WHERE id = $15`,
             [
               date,
               marque,
@@ -1119,6 +1341,7 @@ async function startServer() {
               remarque,
               tech,
               ctrl,
+              JSON.stringify(customValues),
               user.id,
               user.fullName,
               updatedAt,
@@ -1139,6 +1362,7 @@ async function startServer() {
           remarque,
           tech,
           ctrl,
+          customValues,
           updatedById: user.id,
           updatedByName: user.fullName,
           updatedAt,
@@ -1616,6 +1840,90 @@ async function startServer() {
       } catch (err) {
         console.error('Delete role error:', err);
         res.status(500).json({ error: 'Erreur lors de la suppression du rôle.' });
+      }
+    },
+  );
+
+  // Dynamic Registration Form Configuration (Admin only)
+  app.put(
+    '/api/admin/form-config',
+    requireAuth,
+    requireApproved,
+    requirePermission('manageUsers'),
+    async (req: AuthedRequest, res: Response) => {
+      try {
+        const actor = req.currentUser!;
+        const nextConfig = normalizeFormConfig(req.body, actor.fullName);
+
+        if (pgPool) {
+          await pgPool.query(
+            `INSERT INTO form_config (id, config, updated_at, updated_by)
+             VALUES ('default', $1::jsonb, $2, $3)
+             ON CONFLICT (id) DO UPDATE
+             SET config = EXCLUDED.config,
+                 updated_at = EXCLUDED.updated_at,
+                 updated_by = EXCLUDED.updated_by`,
+            [JSON.stringify(nextConfig), nextConfig.updatedAt, actor.fullName],
+          );
+        }
+
+        db.formConfig = nextConfig;
+        await addLog(
+          actor.id,
+          actor.fullName,
+          'form_config_updated',
+          'Formulaire d’enregistrement',
+          `${nextConfig.customFields.length} champ(s) personnalisé(s) · ${nextConfig.checklistItems.length} point(s) de contrôle`,
+        );
+        saveJsonDatabase();
+        broadcastEvent('form_config_updated', { updatedBy: actor.fullName });
+
+        res.json({ formConfig: nextConfig, overview: buildAdminOverview() });
+      } catch (err) {
+        console.error('Update form config error:', err);
+        res.status(500).json({ error: 'Erreur lors de l’enregistrement du formulaire.' });
+      }
+    },
+  );
+
+  app.post(
+    '/api/admin/form-config/reset',
+    requireAuth,
+    requireApproved,
+    requirePermission('manageUsers'),
+    async (req: AuthedRequest, res: Response) => {
+      try {
+        const actor = req.currentUser!;
+        const resetConfig = createDefaultFormConfig();
+        resetConfig.updatedBy = actor.fullName;
+
+        if (pgPool) {
+          await pgPool.query(
+            `INSERT INTO form_config (id, config, updated_at, updated_by)
+             VALUES ('default', $1::jsonb, $2, $3)
+             ON CONFLICT (id) DO UPDATE
+             SET config = EXCLUDED.config,
+                 updated_at = EXCLUDED.updated_at,
+                 updated_by = EXCLUDED.updated_by`,
+            [JSON.stringify(resetConfig), resetConfig.updatedAt, actor.fullName],
+          );
+        }
+
+        db.formConfig = resetConfig;
+        await addLog(
+          actor.id,
+          actor.fullName,
+          'form_config_updated',
+          'Formulaire d’enregistrement',
+          'Configuration réinitialisée par défaut',
+        );
+        saveJsonDatabase();
+        broadcastEvent('form_config_updated', { reset: true, updatedBy: actor.fullName });
+
+        res.json({ formConfig: resetConfig, overview: buildAdminOverview() });
+      } catch (err) {
+        console.error('Reset form config error:', err);
+        res.status(500).json({ error: 'Erreur lors de la réinitialisation du formulaire.' });
       }
     },
   );

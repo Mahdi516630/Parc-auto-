@@ -13,7 +13,14 @@ import {
   X,
 } from 'lucide-react';
 import { formatDateFr, padOrderId, todayIso } from '../constants';
-import type { PeriodFilter, RepairOrder, SortDirection, UserRecord } from '../types';
+import type {
+  CustomFieldDefinition,
+  FormConfig,
+  PeriodFilter,
+  RepairOrder,
+  SortDirection,
+  UserRecord,
+} from '../types';
 import {
   exportOfficialSheetsToPdf,
   exportOrdersToExcel,
@@ -25,6 +32,7 @@ interface OrdersWorkspaceViewProps {
   mode: 'home' | 'list';
   orders: RepairOrder[];
   currentUser: UserRecord;
+  formConfig: FormConfig;
   loading: boolean;
   onNavigateHome: () => void;
   onNavigateList: () => void;
@@ -56,6 +64,7 @@ export const OrdersWorkspaceView: React.FC<OrdersWorkspaceViewProps> = ({
   mode,
   orders,
   currentUser,
+  formConfig,
   loading,
   onNavigateList,
   onNavigateNew,
@@ -65,6 +74,11 @@ export const OrdersWorkspaceView: React.FC<OrdersWorkspaceViewProps> = ({
   onPrintOrders,
 }) => {
   const perms = currentUser.permissions;
+  const checklistLen = formConfig.checklistItems.length;
+  const tableCustomColumns = useMemo(
+    () => formConfig.customFields.filter((f) => f.enabled && f.showInTable),
+    [formConfig.customFields],
+  );
 
   // Filters & selection state
   const [period, setPeriod] = useState<PeriodFilter>('tout');
@@ -93,6 +107,9 @@ export const OrdersWorkspaceView: React.FC<OrdersWorkspaceViewProps> = ({
         if (!isOrderInPeriod(o.date, period, refDate)) return false;
         if (authorFilter !== 'all' && o.createdByName !== authorFilter) return false;
         if (!q) return true;
+        const customSearchParts = Object.values(o.customValues || {}).map((v) =>
+          typeof v === 'boolean' ? (v ? 'oui' : 'non') : String(v),
+        );
         const haystack = [
           padOrderId(o.id),
           o.marque,
@@ -103,6 +120,7 @@ export const OrdersWorkspaceView: React.FC<OrdersWorkspaceViewProps> = ({
           o.ctrl,
           o.createdByName,
           o.remarque,
+          ...customSearchParts,
         ]
           .join(' ')
           .toLowerCase();
@@ -120,8 +138,11 @@ export const OrdersWorkspaceView: React.FC<OrdersWorkspaceViewProps> = ({
     [orders, currentMonthPrefix],
   );
   const incompleteOrders = useMemo(
-    () => orders.filter((o) => o.checks.some((c) => !c)).length,
-    [orders],
+    () =>
+      orders.filter((o) =>
+        formConfig.checklistItems.some((_, idx) => !Boolean(o.checks[idx])),
+      ).length,
+    [orders, formConfig.checklistItems],
   );
   const recentOrders = useMemo(
     () =>
@@ -175,7 +196,7 @@ export const OrdersWorkspaceView: React.FC<OrdersWorkspaceViewProps> = ({
       setFeedback('Aucun ordre à exporter en PDF.');
       return;
     }
-    exportOrdersToPdf(target, currentUser.fullName);
+    exportOrdersToPdf(target, currentUser.fullName, formConfig);
   };
 
   const handleExportSheetsPdf = () => {
@@ -185,7 +206,7 @@ export const OrdersWorkspaceView: React.FC<OrdersWorkspaceViewProps> = ({
       setFeedback('Aucun ordre sélectionné pour les fiches PDF.');
       return;
     }
-    exportOfficialSheetsToPdf(target);
+    exportOfficialSheetsToPdf(target, formConfig);
   };
 
   const handleExportExcel = () => {
@@ -195,7 +216,7 @@ export const OrdersWorkspaceView: React.FC<OrdersWorkspaceViewProps> = ({
       setFeedback('Aucun ordre à exporter vers Excel.');
       return;
     }
-    exportOrdersToExcel(target, currentUser.fullName);
+    exportOrdersToExcel(target, currentUser.fullName, formConfig);
   };
 
   const handleConfirmDelete = async (orderId: number) => {
@@ -340,7 +361,9 @@ export const OrdersWorkspaceView: React.FC<OrdersWorkspaceViewProps> = ({
                   </tr>
                 ) : (
                   recentOrders.map((o) => {
-                    const done = o.checks.filter(Boolean).length;
+                    const done = formConfig.checklistItems.filter((_, idx) =>
+                      Boolean(o.checks[idx]),
+                    ).length;
                     return (
                       <tr
                         key={o.id}
@@ -357,12 +380,12 @@ export const OrdersWorkspaceView: React.FC<OrdersWorkspaceViewProps> = ({
                         <td className="px-4 py-2.5 text-sm tabular-nums">
                           <span
                             className={
-                              done === 16
+                              done === checklistLen
                                 ? 'font-semibold text-[var(--ink)]'
                                 : 'font-semibold text-[var(--pri)]'
                             }
                           >
-                            {done}/16
+                            {done}/{checklistLen}
                           </span>
                         </td>
                         <td className="px-4 py-2.5 text-sm text-[var(--mut)]">
@@ -390,6 +413,7 @@ export const OrdersWorkspaceView: React.FC<OrdersWorkspaceViewProps> = ({
         {previewOrder && (
           <OrderPreviewModal
             order={previewOrder}
+            formConfig={formConfig}
             canPrint={perms.printOrders}
             canExport={perms.exportData}
             onClose={() => setPreviewOrder(null)}
@@ -573,6 +597,14 @@ export const OrdersWorkspaceView: React.FC<OrdersWorkspaceViewProps> = ({
                 <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-[var(--mut)]">
                   Contrôles
                 </th>
+                {tableCustomColumns.map((col) => (
+                  <th
+                    key={col.id}
+                    className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-[var(--mut)] whitespace-nowrap"
+                  >
+                    {col.label}
+                  </th>
+                ))}
                 <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-[var(--mut)]">
                   Créé par
                 </th>
@@ -584,13 +616,18 @@ export const OrdersWorkspaceView: React.FC<OrdersWorkspaceViewProps> = ({
             <tbody>
               {filteredOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-10 text-center text-sm text-[var(--mut)]">
+                  <td
+                    colSpan={9 + tableCustomColumns.length}
+                    className="px-4 py-10 text-center text-sm text-[var(--mut)]"
+                  >
                     Aucun ordre pour cette sélection.
                   </td>
                 </tr>
               ) : (
                 filteredOrders.map((o) => {
-                  const done = o.checks.filter(Boolean).length;
+                  const done = formConfig.checklistItems.filter((_, idx) =>
+                    Boolean(o.checks[idx]),
+                  ).length;
                   const isDeletingThis = confirmDeleteId === o.id;
                   return (
                     <tr
@@ -627,14 +664,24 @@ export const OrdersWorkspaceView: React.FC<OrdersWorkspaceViewProps> = ({
                       <td className="px-3 py-2.5 text-sm tabular-nums">
                         <span
                           className={
-                            done === 16
+                            done === checklistLen
                               ? 'font-semibold text-[var(--ink)]'
                               : 'font-semibold text-[var(--pri)]'
                           }
                         >
-                          {done}/16
+                          {done}/{checklistLen}
                         </span>
                       </td>
+                      {tableCustomColumns.map((col) => (
+                        <td
+                          key={col.id}
+                          className={`px-3 py-2.5 text-sm max-w-[180px] truncate ${
+                            col.type === 'date' || col.type === 'number' ? 'tabular-nums whitespace-nowrap' : ''
+                          }`}
+                        >
+                          {renderCustomCell(col, o.customValues?.[col.id])}
+                        </td>
+                      ))}
                       <td className="px-3 py-2.5 text-sm text-[var(--mut)]">
                         {o.createdByName}
                       </td>
@@ -704,6 +751,7 @@ export const OrdersWorkspaceView: React.FC<OrdersWorkspaceViewProps> = ({
       {previewOrder && (
         <OrderPreviewModal
           order={previewOrder}
+          formConfig={formConfig}
           canPrint={perms.printOrders}
           canExport={perms.exportData}
           onClose={() => setPreviewOrder(null)}
@@ -714,8 +762,26 @@ export const OrdersWorkspaceView: React.FC<OrdersWorkspaceViewProps> = ({
   );
 };
 
+function renderCustomCell(
+  field: CustomFieldDefinition,
+  val: string | boolean | undefined,
+): React.ReactNode {
+  if (field.type === 'checkbox') {
+    return (
+      <span className={val === true ? 'font-semibold text-[var(--ink)]' : 'text-[var(--mut)]'}>
+        {val === true ? 'Oui' : 'Non'}
+      </span>
+    );
+  }
+  const str = String(val || '').trim();
+  if (!str) return <span className="text-[var(--mut)]">—</span>;
+  if (field.type === 'date') return formatDateFr(str);
+  return str;
+}
+
 interface OrderPreviewModalProps {
   order: RepairOrder;
+  formConfig: FormConfig;
   canPrint: boolean;
   canExport: boolean;
   onClose: () => void;
@@ -724,6 +790,7 @@ interface OrderPreviewModalProps {
 
 const OrderPreviewModal: React.FC<OrderPreviewModalProps> = ({
   order,
+  formConfig,
   canPrint,
   canExport,
   onClose,
@@ -740,7 +807,7 @@ const OrderPreviewModal: React.FC<OrderPreviewModalProps> = ({
             {canExport && (
               <button
                 type="button"
-                onClick={() => exportOfficialSheetsToPdf([order])}
+                onClick={() => exportOfficialSheetsToPdf([order], formConfig)}
                 className="px-3 py-1.5 text-xs font-semibold rounded border border-[var(--bd)] bg-[var(--inp)] hover:border-[var(--pri)] inline-flex items-center gap-1.5 cursor-pointer"
               >
                 <FileText className="w-3.5 h-3.5 text-[var(--red)]" />
@@ -769,7 +836,7 @@ const OrderPreviewModal: React.FC<OrderPreviewModalProps> = ({
         </div>
         <div className="overflow-y-auto p-4 bg-[#d5d9e2]">
           <div className="max-w-[740px] mx-auto border border-[#000] bg-white">
-            <OfficialSheet order={order} />
+            <OfficialSheet order={order} formConfig={formConfig} />
           </div>
         </div>
       </div>

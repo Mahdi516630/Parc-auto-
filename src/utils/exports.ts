@@ -1,17 +1,41 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
-import { CHECKLIST_ITEMS, formatDateFr, padOrderId } from '../constants';
-import type { RepairOrder } from '../types';
+import { createDefaultFormConfig, formatDateFr, padOrderId } from '../constants';
+import type { CustomFieldDefinition, FormConfig, RepairOrder } from '../types';
 
-function getCheckedDescriptions(order: RepairOrder): string[] {
-  return CHECKLIST_ITEMS.filter((_, idx) => Boolean(order.checks[idx]));
+function getCheckedDescriptions(order: RepairOrder, checklistItems: string[]): string[] {
+  return checklistItems.filter((_, idx) => Boolean(order.checks[idx]));
 }
 
-export function exportOrdersToExcel(orders: RepairOrder[], exportedBy: string): void {
+function formatCustomExportValue(
+  field: CustomFieldDefinition,
+  val: string | boolean | undefined,
+  forPdf = false,
+): string {
+  if (field.type === 'checkbox') {
+    if (forPdf) return val === true ? '[X] Oui' : '[ ] Non';
+    return val === true ? 'Oui' : 'Non';
+  }
+  const str = String(val || '').trim();
+  if (!str) return '—';
+  if (field.type === 'date') return formatDateFr(str);
+  return str;
+}
+
+export function exportOrdersToExcel(
+  orders: RepairOrder[],
+  exportedBy: string,
+  formConfig?: FormConfig,
+): void {
+  const cfg = formConfig || createDefaultFormConfig();
+  const checklist = cfg.checklistItems;
+  const activeCustomFields = cfg.customFields.filter((f) => f.enabled);
+  const totalChecks = checklist.length;
+
   const summaryRows = orders.map((o) => {
-    const checkedItems = getCheckedDescriptions(o);
-    return {
+    const checkedItems = getCheckedDescriptions(o, checklist);
+    const row: Record<string, string | number> = {
       'N° Ordre': padOrderId(o.id),
       'Date des travaux': formatDateFr(o.date),
       Marque: o.marque,
@@ -19,17 +43,24 @@ export function exportOrdersToExcel(orders: RepairOrder[], exportedBy: string): 
       'N° Immatriculation': o.immat,
       VIN: o.vin || '—',
       'Kilométrage (km)': o.km,
-      'Contrôles effectués': `${checkedItems.length}/16`,
-      'Taux de contrôle (%)': Math.round((checkedItems.length / 16) * 100),
+      'Contrôles effectués': `${checkedItems.length}/${totalChecks}`,
+      'Taux de contrôle (%)':
+        totalChecks > 0 ? Math.round((checkedItems.length / totalChecks) * 100) : 100,
       'Description du travail (éléments cochés)':
         checkedItems.length > 0
           ? checkedItems.map((item) => `• ${item}`).join('\n')
           : 'Aucun élément coché',
-      Remarque: o.remarque || '',
-      Technicien: o.tech || '—',
-      Contrôleur: o.ctrl || '—',
-      'Créé par': o.createdByName,
     };
+
+    for (const field of activeCustomFields) {
+      row[field.label] = formatCustomExportValue(field, o.customValues?.[field.id], false);
+    }
+
+    row.Remarque = o.remarque || '';
+    row.Technicien = o.tech || '—';
+    row.Contrôleur = o.ctrl || '—';
+    row['Créé par'] = o.createdByName;
+    return row;
   });
 
   const detailRows = orders.map((o) => {
@@ -41,7 +72,10 @@ export function exportOrdersToExcel(orders: RepairOrder[], exportedBy: string): 
       'Kilométrage (km)': o.km,
       'Créé par': o.createdByName,
     };
-    CHECKLIST_ITEMS.forEach((label, idx) => {
+    for (const field of activeCustomFields) {
+      row[field.label] = formatCustomExportValue(field, o.customValues?.[field.id], false);
+    }
+    checklist.forEach((label, idx) => {
       row[`${idx + 1}. ${label}`] = o.checks[idx] ? 'Fait' : 'Non fait';
     });
     return row;
@@ -60,6 +94,7 @@ export function exportOrdersToExcel(orders: RepairOrder[], exportedBy: string): 
     { wch: 18 },
     { wch: 18 },
     { wch: 52 },
+    ...activeCustomFields.map(() => ({ wch: 22 })),
     { wch: 36 },
     { wch: 18 },
     { wch: 18 },
@@ -75,9 +110,10 @@ export function exportOrdersToExcel(orders: RepairOrder[], exportedBy: string): 
     { wch: 16 },
     { wch: 16 },
     { wch: 20 },
-    ...CHECKLIST_ITEMS.map(() => ({ wch: 14 })),
+    ...activeCustomFields.map(() => ({ wch: 20 })),
+    ...checklist.map(() => ({ wch: 14 })),
   ];
-  XLSX.utils.book_append_sheet(wb, wsDetails, 'Détail 16 Contrôles');
+  XLSX.utils.book_append_sheet(wb, wsDetails, 'Détail Contrôles');
 
   const metaSheet = XLSX.utils.json_to_sheet([
     {
@@ -94,7 +130,16 @@ export function exportOrdersToExcel(orders: RepairOrder[], exportedBy: string): 
   XLSX.writeFile(wb, `Parc_Auto_Protocole_Ordres_${stamp}.xlsx`);
 }
 
-export function exportOrdersToPdf(orders: RepairOrder[], exportedBy: string): void {
+export function exportOrdersToPdf(
+  orders: RepairOrder[],
+  exportedBy: string,
+  formConfig?: FormConfig,
+): void {
+  const cfg = formConfig || createDefaultFormConfig();
+  const checklist = cfg.checklistItems;
+  const activeCustomFields = cfg.customFields.filter((f) => f.enabled);
+  const totalChecks = checklist.length;
+
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
 
@@ -131,25 +176,34 @@ export function exportOrdersToPdf(orders: RepairOrder[], exportedBy: string): vo
         'Km',
         'Contrôles',
         'Description du travail (éléments cochés)',
-        'Remarque',
+        activeCustomFields.length > 0 ? 'Remarque & Compléments' : 'Remarque',
         'Intervenants',
         'Créé par',
       ],
     ],
     body: orders.map((o) => {
-      const checkedItems = getCheckedDescriptions(o);
+      const checkedItems = getCheckedDescriptions(o, checklist);
       const checkedText =
         checkedItems.length > 0
           ? checkedItems.map((item) => `• ${item}`).join('\n')
           : 'Aucun élément coché';
+
+      const customLines = activeCustomFields.map(
+        (field) =>
+          `${field.label}: ${formatCustomExportValue(field, o.customValues?.[field.id], true)}`,
+      );
+      const remarkAndCustom = [o.remarque || '', ...customLines]
+        .filter((s) => s.trim().length > 0)
+        .join('\n');
+
       return [
         padOrderId(o.id),
         formatDateFr(o.date),
         `${o.marque} ${o.modele}\nImmat. ${o.immat}${o.vin ? `\nVIN: ${o.vin}` : ''}`,
         `${o.km.toLocaleString('fr-FR')} km`,
-        `${checkedItems.length}/16`,
+        `${checkedItems.length}/${totalChecks}`,
         checkedText,
-        o.remarque || '—',
+        remarkAndCustom || '—',
         `Tech: ${o.tech || '—'}\nCtrl: ${o.ctrl || '—'}`,
         o.createdByName,
       ];
@@ -167,8 +221,8 @@ export function exportOrdersToPdf(orders: RepairOrder[], exportedBy: string): vo
       2: { cellWidth: 36 },
       3: { cellWidth: 18, halign: 'right' },
       4: { cellWidth: 16, halign: 'center', fontStyle: 'bold' },
-      5: { cellWidth: 82 },
-      6: { cellWidth: 34 },
+      5: { cellWidth: 76 },
+      6: { cellWidth: 40 },
       7: { cellWidth: 27 },
       8: { cellWidth: 23 },
     },
@@ -186,7 +240,14 @@ export function exportOrdersToPdf(orders: RepairOrder[], exportedBy: string): vo
   doc.save(`Parc_Auto_Protocole_Registre_${stamp}.pdf`);
 }
 
-export function exportOfficialSheetsToPdf(orders: RepairOrder[]): void {
+export function exportOfficialSheetsToPdf(
+  orders: RepairOrder[],
+  formConfig?: FormConfig,
+): void {
+  const cfg = formConfig || createDefaultFormConfig();
+  const checklist = cfg.checklistItems;
+  const activeCustomFields = cfg.customFields.filter((f) => f.enabled);
+
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
   orders.forEach((o, index) => {
@@ -235,20 +296,45 @@ export function exportOfficialSheetsToPdf(orders: RepairOrder[]): void {
       },
     });
 
-    const afterVehicleY =
+    let currentY =
       (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? 64;
 
+    if (activeCustomFields.length > 0) {
+      autoTable(doc, {
+        startY: currentY + 4,
+        body: activeCustomFields.map((field) => [
+          field.label,
+          formatCustomExportValue(field, o.customValues?.[field.id], true),
+        ]),
+        theme: 'grid',
+        styles: {
+          fontSize: 8.5,
+          textColor: [0, 0, 0],
+          lineColor: [0, 0, 0],
+          lineWidth: 0.2,
+          cellPadding: 1.8,
+        },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 68, fillColor: [244, 245, 248] },
+        },
+      });
+      currentY =
+        (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ??
+        currentY + 12;
+    }
+
+    const doneCount = checklist.filter((_, idx) => Boolean(o.checks[idx])).length;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(10.5);
     doc.text(
-      `Description du travail (${o.checks.filter(Boolean).length}/16 effectués)`,
+      `Description du travail (${doneCount}/${checklist.length} effectués)`,
       14,
-      afterVehicleY + 7,
+      currentY + 7,
     );
 
     autoTable(doc, {
-      startY: afterVehicleY + 10,
-      body: CHECKLIST_ITEMS.map((item, idx) => [
+      startY: currentY + 10,
+      body: checklist.map((item, idx) => [
         `${item} :`,
         o.checks[idx] ? '[X] Cochée' : '[ ] Non',
       ]),

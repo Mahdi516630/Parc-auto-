@@ -5,21 +5,25 @@ import {
   createOrder,
   deleteOrder,
   fetchAdminOverview,
+  fetchFormConfig,
   fetchMe,
   fetchOrders,
   getStoredToken,
   setStoredToken,
   updateOrder,
+  type OrderSavePayload,
 } from './api';
-import { AdminDashboardView } from './components/AdminDashboardView';
+import { AdminDashboardView, type AdminTab } from './components/AdminDashboardView';
 import { AuthScreen } from './components/AuthScreen';
 import { DjiboutiFlag } from './components/DjiboutiFlag';
 import { OrderFormView } from './components/OrderFormView';
 import { OrdersWorkspaceView } from './components/OrdersWorkspaceView';
 import { PendingScreen } from './components/PendingScreen';
 import { PrintSheetsContainer } from './components/PrintSheets';
+import { createDefaultFormConfig } from './constants';
 import type {
   AdminOverviewPayload,
+  FormConfig,
   RepairOrder,
   RoleDefinition,
   UserRecord,
@@ -43,7 +47,9 @@ export default function App() {
   const [token, setToken] = useState<string | null>(() => getStoredToken());
   const [user, setUser] = useState<UserRecord | null>(null);
   const [roles, setRoles] = useState<RoleDefinition[]>([]);
+  const [formConfig, setFormConfig] = useState<FormConfig>(() => createDefaultFormConfig());
   const [route, setRoute] = useState<ActiveRoute>('home');
+  const [adminTab, setAdminTab] = useState<AdminTab>('users');
   const [editingOrder, setEditingOrder] = useState<RepairOrder | null>(null);
 
   const [orders, setOrders] = useState<RepairOrder[]>([]);
@@ -128,6 +134,9 @@ export default function App() {
       const me = await fetchMe();
       setUser(me.user);
       setRoles(me.roles);
+      if (me.formConfig) {
+        setFormConfig(me.formConfig);
+      }
       if (me.user.status === 'approved') {
         await Promise.all([loadOrders(me.user), loadAdminData(me.user)]);
       }
@@ -173,15 +182,28 @@ export default function App() {
     const onRolesUpdated = () => {
       refreshSession();
     };
+    const onFormConfigUpdated = () => {
+      fetchFormConfig()
+        .then((cfg) => setFormConfig(cfg))
+        .catch(() => {
+          // ignore transient refresh failure
+        });
+      const current = userRef.current;
+      if (current && current.status === 'approved' && current.permissions.manageUsers) {
+        loadAdminData(current);
+      }
+    };
 
     source.addEventListener('users_updated', onUsersUpdated);
     source.addEventListener('orders_updated', onOrdersUpdated);
     source.addEventListener('roles_updated', onRolesUpdated);
+    source.addEventListener('form_config_updated', onFormConfigUpdated);
 
     return () => {
       source.removeEventListener('users_updated', onUsersUpdated);
       source.removeEventListener('orders_updated', onOrdersUpdated);
       source.removeEventListener('roles_updated', onRolesUpdated);
+      source.removeEventListener('form_config_updated', onFormConfigUpdated);
       source.close();
     };
   }, [token, userId, userStatus, canManageUsers, refreshSession, loadOrders, loadAdminData]);
@@ -200,6 +222,9 @@ export default function App() {
       const me = await fetchMe();
       setUser(me.user);
       setRoles(me.roles);
+      if (me.formConfig) {
+        setFormConfig(me.formConfig);
+      }
       if (me.user.status === 'approved') {
         await Promise.all([loadOrders(me.user), loadAdminData(me.user)]);
       }
@@ -208,18 +233,7 @@ export default function App() {
     }
   };
 
-  const handleSaveOrder = async (payload: {
-    date: string;
-    marque: string;
-    modele: string;
-    immat: string;
-    vin: string;
-    km: number;
-    checks: boolean[];
-    remarque: string;
-    tech: string;
-    ctrl: string;
-  }) => {
+  const handleSaveOrder = async (payload: OrderSavePayload) => {
     if (route === 'edit' && editingOrder) {
       await updateOrder(editingOrder.id, payload);
     } else {
@@ -418,27 +432,47 @@ export default function App() {
           {route === 'admin' && user.permissions.manageUsers ? (
             <AdminDashboardView
               overview={adminOverview}
+              formConfig={formConfig}
               currentUser={user}
               loading={adminLoading}
+              requestedTab={adminTab}
               onRefresh={() => loadAdminData(user)}
-              onOverviewChange={(next) => setAdminOverview(next)}
+              onOverviewChange={(next) => {
+                setAdminOverview(next);
+                if (next.formConfig) {
+                  setFormConfig(next.formConfig);
+                }
+              }}
+              onFormConfigChange={(nextCfg) => setFormConfig(nextCfg)}
             />
           ) : (route === 'new' && user.permissions.createOrders) ||
             (route === 'edit' && user.permissions.editOrders && editingOrder) ? (
             <OrderFormView
               existingOrder={route === 'edit' ? editingOrder : null}
               currentUser={user}
+              formConfig={formConfig}
               onSave={handleSaveOrder}
               onCancel={() => {
                 setEditingOrder(null);
                 setRoute('list');
               }}
+              onOpenFormBuilder={
+                user.permissions.manageUsers
+                  ? () => {
+                      setEditingOrder(null);
+                      setAdminTab('form');
+                      setRoute('admin');
+                      loadAdminData(user);
+                    }
+                  : undefined
+              }
             />
           ) : user.permissions.viewOrders ? (
             <OrdersWorkspaceView
               mode={route === 'list' ? 'list' : 'home'}
               orders={orders}
               currentUser={user}
+              formConfig={formConfig}
               loading={ordersLoading}
               onNavigateHome={() => setRoute('home')}
               onNavigateList={() => setRoute('list')}
@@ -451,6 +485,7 @@ export default function App() {
                 setRoute('edit');
               }}
               onNavigateAdmin={() => {
+                setAdminTab('users');
                 setRoute('admin');
                 loadAdminData(user);
               }}
@@ -472,7 +507,7 @@ export default function App() {
       </div>
 
       {/* Hidden official print container rendered strictly for @media print */}
-      <PrintSheetsContainer orders={printQueue} />
+      <PrintSheetsContainer orders={printQueue} formConfig={formConfig} />
     </>
   );
 }

@@ -1,9 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Activity,
   Ban,
   Check,
   Clock,
+  FilePenLine,
   Plus,
   RefreshCw,
   Shield,
@@ -33,38 +34,51 @@ import {
   adminUpdateUser,
 } from '../api';
 import {
+  createDefaultFormConfig,
   emptyPermissions,
   formatDateTimeFr,
   PERMISSION_DEFINITIONS,
 } from '../constants';
 import type {
   AdminOverviewPayload,
+  FormConfig,
   PermissionKey,
   RoleDefinition,
   UserPermissions,
   UserRecord,
   UserStatus,
 } from '../types';
+import { FormBuilderPanel } from './FormBuilderPanel';
+
+export type AdminTab = 'users' | 'roles' | 'form' | 'logs';
 
 interface AdminDashboardViewProps {
   overview: AdminOverviewPayload | null;
+  formConfig: FormConfig;
   currentUser: UserRecord;
   loading: boolean;
+  requestedTab?: AdminTab;
   onRefresh: () => Promise<void>;
   onOverviewChange: (next: AdminOverviewPayload) => void;
+  onFormConfigChange: (next: FormConfig) => void;
 }
 
-type AdminTab = 'users' | 'roles' | 'logs';
 type StatusFilter = 'all' | 'pending' | 'approved' | 'blocked';
 
 export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   overview,
+  formConfig,
   currentUser,
   loading,
+  requestedTab,
   onRefresh,
   onOverviewChange,
+  onFormConfigChange,
 }) => {
-  const [activeTab, setActiveTab] = useState<AdminTab>('users');
+  const [activeTab, setActiveTab] = useState<AdminTab>(requestedTab || 'users');
+  useEffect(() => {
+    if (requestedTab) setActiveTab(requestedTab);
+  }, [requestedTab]);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [userSearch, setUserSearch] = useState('');
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
@@ -337,7 +351,9 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
 
           <div className="bg-[var(--card)] border border-[var(--bd)] rounded-lg p-4">
             <div className="flex items-center justify-between text-xs font-semibold text-[var(--mut)]">
-              <span>Conformité 16/16</span>
+              <span>
+                Conformité {stats.checklistCount}/{stats.checklistCount}
+              </span>
               <Shield className="w-4 h-4 text-[var(--ink)]" />
             </div>
             <div className="font-display text-3xl font-bold tabular-nums mt-2 text-[var(--ink)]">
@@ -360,7 +376,8 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 Évolution mensuelle des ordres
               </div>
               <div className="text-xs text-[var(--mut)]">
-                Volume mensuel enregistré et fiches conformes (16/16 contrôles)
+                Volume mensuel enregistré et fiches conformes ({stats.checklistCount}/
+                {stats.checklistCount} contrôles)
               </div>
             </div>
             <div className="h-[340px] w-full">
@@ -414,7 +431,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                   <Area
                     type="monotone"
                     dataKey="completeOrders"
-                    name="Conformes (16/16)"
+                    name={`Conformes (${stats.checklistCount}/${stats.checklistCount})`}
                     stroke="#0b6b1f"
                     strokeWidth={2}
                     fillOpacity={1}
@@ -432,7 +449,8 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 Répartition des types de réparations effectuées
               </div>
               <div className="text-xs text-[var(--mut)]">
-                Fréquence d’exécution sur les 16 points de contrôle officiels
+                Fréquence d’exécution sur les {stats.checklistCount} points de contrôle du
+                formulaire
               </div>
             </div>
             <div className="h-[340px] w-full">
@@ -640,6 +658,18 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
         >
           <Sliders className="w-4 h-4" />
           Modèles de rôles ({roles.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('form')}
+          className={`min-h-[40px] px-4 py-2 rounded-md text-sm font-semibold flex items-center gap-2 cursor-pointer ${
+            activeTab === 'form'
+              ? 'bg-[var(--pri)] text-white'
+              : 'border border-[var(--bd)] bg-[var(--card)] text-[var(--fg)] hover:border-[var(--pri)]'
+          }`}
+        >
+          <FilePenLine className="w-4 h-4" />
+          Formulaire d’enregistrement
         </button>
         <button
           type="button"
@@ -1136,7 +1166,20 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
         </div>
       )}
 
-      {/* TAB 3: LIVE ACTIVITY LOGS */}
+      {/* TAB 3: FORM BUILDER */}
+      {activeTab === 'form' && (
+        <FormBuilderPanel
+          formConfig={overview?.formConfig || formConfig || createDefaultFormConfig()}
+          onConfigSaved={(nextConfig, nextOverview) => {
+            onFormConfigChange(nextConfig);
+            onOverviewChange(nextOverview);
+          }}
+          onNotify={(msg) => setFeedback(msg)}
+          onError={(msg) => setErrorMsg(msg)}
+        />
+      )}
+
+      {/* TAB 4: LIVE ACTIVITY LOGS */}
       {activeTab === 'logs' && (
         <div className="bg-[var(--card)] border border-[var(--bd)] rounded-lg overflow-hidden">
           <div className="overflow-x-auto">
