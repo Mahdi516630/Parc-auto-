@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Parc Auto Protocole</title>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;600&family=Spectral:wght@700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f4f5f8;--fg:#0f1f3d;--card:#fff;--bd:#d5d9e2;--mut:#4a5468;--pri:#1d5f96;--ink:#0b6b1f;--inp:#f4f5f8;--row:#e3e6ed;--red:#d7141a;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#10162a;--fg:#e8ebf4;--card:#182040;--bd:#2c3760;--mut:#a7b0c8;--pri:#2f7fc0;--ink:#2f9a45;--inp:#10162a;--row:#26305a}}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px "Public Sans",system-ui,sans-serif}
+.tri{height:8px;background:linear-gradient(180deg,#6ab2e7 50%,#12ad2b 50%)}
+.flag{width:36px;height:24px;border-radius:2px;border:1px solid var(--bd);vertical-align:middle;margin-right:8px}
+.bar{display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center;padding:12px 20px;background:var(--card);border-bottom:1px solid var(--bd)}
+.bar b{font:700 17px Spectral,serif}.t{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.btn{border:0;border-radius:6px;padding:10px 16px;font:600 14px "Public Sans",sans-serif;background:var(--pri);color:#fff;min-height:44px;cursor:pointer}
+.o{background:var(--card);color:var(--fg);border:1px solid var(--bd)}.k{background:var(--ink);color:#fff}
+main{padding:20px;max-width:1100px;margin:auto}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:20px}
+h2{font:700 24px Spectral,serif;margin:0 0 14px}
+label{display:block;font-size:13px;font-weight:600;color:var(--mut)}
+input,select,textarea{display:block;width:100%;margin-top:4px;min-height:40px;border:1px solid var(--bd);border-radius:6px;background:var(--inp);color:var(--fg);padding:9px 10px;font:400 15px "Public Sans",sans-serif}
+textarea{min-height:70px;resize:vertical}
+.g{display:grid;gap:14px}.g3{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+.chk{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));column-gap:28px}
+.c{display:flex;gap:10px;align-items:center;padding:9px 4px;border-bottom:1px solid var(--row);font-size:14px;font-weight:400;color:var(--fg);cursor:pointer}
+.c input{width:18px;height:18px;min-height:0;margin:0;accent-color:var(--pri)}
+.tools{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;align-items:end;margin-bottom:16px}
+.tw{overflow-x:auto}table{width:100%;border-collapse:collapse;min-width:720px}
+th,td{padding:10px;text-align:left;border-bottom:1px solid var(--row);font-size:14px}th{color:var(--mut)}
+td input[type=checkbox]{width:18px;height:18px;min-height:0;margin:0;accent-color:var(--pri)}
+.msg{color:var(--red);font-weight:600;min-height:20px}.empty{padding:24px;text-align:center;color:var(--mut)}
+#print{display:none}
+@media print{body>*:not(#print){display:none!important}#print{display:block}body{background:#fff}
+.sheet{page-break-after:always;color:#000;background:#fff;font:12pt Arial,sans-serif;padding:10mm}.sheet:last-child{page-break-after:auto}}
+.sheet table{min-width:0}.sheet th,.sheet td{border:1px solid #000;padding:5px 8px;color:#000;font-size:11pt}
+</style></head><body>
+<div class="tri"></div>
+<div class="bar" id="bar" style="display:none"><b><span id="fl"></span>Parc Auto Protocole</b>
+<div class="t"><button class="btn o" id="bh">Accueil</button><button class="btn o" id="bn">Nouvel ordre</button><button class="btn o" id="bl">Liste</button></div>
+<div class="t"><span id="me" style="color:var(--mut)"></span><button class="btn o" id="bo">Déconnexion</button></div></div>
+<main id="app"></main><div id="print"></div>
+<script>
+const ITEMS=["Vérification de batterie","Vérification alternateur","Vérification démarrage","Vérification klaxon","Contrôle de fonctionnement de l’éclairage avant","Contrôle de fonctionnement des feux de stop","Contrôle de fonctionnement des feux de recul","Contrôle de fonctionnement des feux de détresse","Contrôle de fonctionnement de l’éclairage intérieur","Contrôle de fonctionnement de l’avertisseur sonore","Vérification de la climatisation et de la ventilation","Vérification des commandes au tableau de bord","Vérification des lève-vitres AV et AR","Vérifier l’absence de défauts sur l’ordinateur de bord","Recompléter les niveaux de la batterie, vérification de sa fixation","Essai routier"];
+const mk=n=>Array.from({length:16},(_,i)=>i<n);
+const SEED=[{id:3,date:"2026-10-06",marque:"Renault",modele:"Safrane",immat:"121",vin:"VF1ABLACA3CC263895",km:14011,checks:mk(9),remarque:"Essai routier à effectuer après remplacement du démarreur.",tech:"M. Diallo",ctrl:"M. Mensah"},
+{id:2,date:"2026-10-03",marque:"Peugeot",modele:"607",immat:"118",vin:"",km:52340,checks:mk(16),remarque:"",tech:"",ctrl:""},
+{id:1,date:"2026-09-29",marque:"Mercedes",modele:"Classe S",immat:"104",vin:"",km:38720,checks:mk(14),remarque:"",tech:"",ctrl:""}];
+let orders;try{orders=JSON.parse(localStorage.getItem("pap")||"null")}catch(e){}
+orders=orders||SEED;
+const save=()=>{try{localStorage.setItem("pap",JSON.stringify(orders))}catch(e){}};
+const $=s=>document.querySelector(s),pad=n=>String(n).padStart(7,"0");
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fr=d=>d.split("-").reverse().join("/");
+const today=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")};
+const sel=new Set();const F={per:"mois",ref:"2026-10-06",sort:"desc",q:""};
+
+function form(id){
+ const o=orders.find(x=>x.id===id)||{date:today(),checks:mk(0),km:"",marque:"",modele:"",immat:"",vin:"",remarque:"",tech:ME&&ME.role==="technicien"?ME.nom:"",ctrl:ME&&ME.role==="contrôleur"?ME.nom:""};
+ const f=(k,l,t="text")=>`<label>${l}<input id="f_${k}" type="${t}" value="${esc(o[k])}"></label>`;
+ $("#app").innerHTML=`<div class="card"><h2>${id?"Modifier l’ordre "+pad(id):"Nouvel ordre de réparation"}</h2><div class="g">
+ <div class="g3">${f("marque","Marque")}${f("modele","Modèle")}${f("immat","N° d’immatriculation")}${f("vin","VIN")}${f("km","Kilométrage (km)","number")}${f("date","Date des travaux","date")}</div>
+ <b>Description du travail</b><div class="chk">${ITEMS.map((t,i)=>`<label class="c"><input type="checkbox" class="ck" ${o.checks[i]?"checked":""}>${t}</label>`).join("")}</div>
+ <label>Remarque<textarea id="f_remarque">${esc(o.remarque)}</textarea></label>
+ <div class="g3">${f("tech","Nom du technicien")}${f("ctrl","Nom du contrôleur")}</div>
+ <div class="msg" id="msg"></div>
+ <div class="t"><button class="btn" id="sv">Enregistrer l’ordre</button><button class="btn o" id="cx">Annuler</button></div></div></div>`;
+ $("#cx").onclick=list;
+ $("#sv").onclick=()=>{
+  const v=k=>$("#f_"+k).value.trim();
+  if(!v("marque")||!v("modele")||!v("immat")||!v("date")){$("#msg").textContent="Marque, modèle, immatriculation et date sont obligatoires.";return}
+  const km=Number(v("km"));if(v("km")===""||km<0||isNaN(km)){$("#msg").textContent="Indiquez un kilométrage valide.";return}
+  const n={id:id||Math.max(0,...orders.map(x=>x.id))+1,date:v("date"),marque:v("marque"),modele:v("modele"),immat:v("immat"),vin:v("vin"),km,checks:[...document.querySelectorAll(".ck")].map(c=>c.checked),remarque:v("remarque"),tech:v("tech"),ctrl:v("ctrl")};
+  orders=id?orders.map(x=>x.id===id?n:x):[n,...orders];save();list();
+ };
+}
+
+function inPeriod(d){
+ if(F.per==="tout"||!F.ref)return true;
+ const r=new Date(F.ref+"T00:00:00"),x=new Date(d+"T00:00:00");
+ if(F.per==="jour")return d===F.ref;
+ if(F.per==="mois")return r.getFullYear()===x.getFullYear()&&r.getMonth()===x.getMonth();
+ const s=new Date(r);s.setDate(r.getDate()-((r.getDay()+6)%7));const e=new Date(s);e.setDate(s.getDate()+6);return x>=s&&x<=e;
+}
+function list(){
+ const q=F.q.toLowerCase();
+ const rows=orders.filter(o=>inPeriod(o.date)&&(!q||[o.marque,o.modele,o.immat,o.vin,pad(o.id)].join(" ").toLowerCase().includes(q)))
+  .sort((a,b)=>(a.date<b.date?-1:a.date>b.date?1:a.id-b.id)*(F.sort==="desc"?-1:1));
+ const opt=(v,l,c)=>`<option value="${v}" ${c===v?"selected":""}>${l}</option>`;
+ $("#app").innerHTML=`<div class="tools">
+ <label>Période<select id="p">${opt("jour","Jour",F.per)}${opt("semaine","Semaine",F.per)}${opt("mois","Mois",F.per)}${opt("tout","Tout",F.per)}</select></label>
+ <label>Date de référence<input id="r" type="date" value="${F.ref}"></label>
+ <label>Tri par date<select id="s">${opt("desc","Plus récent d’abord",F.sort)}${opt("asc","Plus ancien d’abord",F.sort)}</select></label>
+ <label>Recherche<input id="q" placeholder="Marque, immatriculation…" value="${esc(F.q)}"></label>
+ <button class="btn" id="pr">Imprimer la sélection (${sel.size})</button></div>
+ <div class="card" style="padding:0"><div class="tw"><table><tr><th><input type="checkbox" id="all" ${rows.length&&rows.every(o=>sel.has(o.id))?"checked":""} aria-label="Tout sélectionner"></th><th>N°</th><th>Date</th><th>Véhicule</th><th>Immat.</th><th>Km</th><th>Contrôles</th><th></th></tr>
+ ${rows.map(o=>`<tr><td><input type="checkbox" class="sc" data-id="${o.id}" ${sel.has(o.id)?"checked":""}></td><td>${pad(o.id)}</td><td>${fr(o.date)}</td><td>${esc(o.marque)} ${esc(o.modele)}</td><td>${esc(o.immat)}</td><td>${o.km} km</td><td>${o.checks.filter(Boolean).length}/16</td><td><button class="btn o" style="min-height:36px" data-e="${o.id}">Modifier</button></td></tr>`).join("")}</table>
+ ${rows.length?"":'<div class="empty">Aucun ordre pour cette sélection.</div>'}</div></div>`;
+ $("#p").onchange=e=>{F.per=e.target.value;list()};$("#r").onchange=e=>{F.ref=e.target.value;list()};$("#s").onchange=e=>{F.sort=e.target.value;list()};
+ $("#q").oninput=e=>{F.q=e.target.value;const p=e.target.selectionStart;list();const n=$("#q");n.focus();n.setSelectionRange(p,p)};
+ $("#all").onchange=e=>{rows.forEach(o=>e.target.checked?sel.add(o.id):sel.delete(o.id));list()};
+ document.querySelectorAll(".sc").forEach(c=>c.onchange=()=>{c.checked?sel.add(+c.dataset.id):sel.delete(+c.dataset.id);list()});
+ document.querySelectorAll("[data-e]").forEach(b=>b.onclick=()=>form(+b.dataset.e));
+ $("#pr").onclick=()=>{
+  const l=orders.filter(o=>sel.has(o.id));if(!l.length){alert("Sélectionnez au moins un ordre.");return}
+  $("#print").innerHTML=l.map(sheet).join("");try{window.print()}catch(e){}
+ };
+}
+function sheet(o){return`<div class="sheet"><div style="text-align:center;font-weight:700;font-size:11pt">République de Djibouti</div><div style="text-align:center;font-weight:700;font-size:14pt">Présidence de la République</div>
+<div style="text-align:center;font-weight:700;margin:2px 0 10px">Parc Auto Protocole</div>
+<div style="text-align:right;font-weight:700">Ordre de Réparation<br>${pad(o.id)}</div>
+<table style="margin:10px 0"><tr><th>Marque</th><th>Modèle</th><th>N° immatriculation</th><th>VIN</th><th>Kilométrage</th><th>Date de travaux</th></tr>
+<tr><td>${esc(o.marque)}</td><td>${esc(o.modele)}</td><td>${esc(o.immat)}</td><td>${esc(o.vin)}</td><td>${o.km} km</td><td>${fr(o.date)}</td></tr></table>
+<b>Description du travail</b><table style="margin:6px 0">${ITEMS.map((t,i)=>`<tr><td>${t} :</td><td style="width:40px;text-align:center">${o.checks[i]?"☑":"☐"}</td></tr>`).join("")}</table>
+<b>REMARQUE</b><div style="border:1px solid #000;padding:6px;min-height:50px;margin:4px 0 18px">${esc(o.remarque)}</div>
+<div style="display:flex;justify-content:space-between"><span>Nom du technicien : ${esc(o.tech)}<br><br>Signature :</span><span>Nom du contrôleur : ${esc(o.ctrl)}<br><br>Signature :</span></div></div>`}
+const FLAG='<svg class="flag" viewBox="0 0 36 24" role="img" aria-label="Drapeau de Djibouti"><rect width="36" height="12" fill="#6ab2e7"/><rect y="12" width="36" height="12" fill="#12ad2b"/><path d="M0 0L20.8 12L0 24Z" fill="#fff"/><polygon points="7,7.8 7.94,10.71 10.99,10.7 8.52,12.49 9.47,15.4 7,13.6 4.53,15.4 5.48,12.49 3.01,10.7 6.06,10.71" fill="#d7141a"/></svg>';
+const USERS=[{id:"karim",nom:"Karim B.",role:"gestionnaire",pw:"protocole2026"},{id:"diallo",nom:"M. Diallo",role:"technicien",pw:"protocole2026"},{id:"mensah",nom:"M. Mensah",role:"contrôleur",pw:"protocole2026"}];
+let ME=null;try{ME=USERS.find(u=>u.id===sessionStorage.getItem("pap_u"))||null}catch(e){}
+function setBar(){$("#fl").innerHTML=FLAG;$("#bar").style.display=ME?"":"none";$("#me").textContent=ME?ME.nom+" · "+ME.role:""}
+function login(){
+ ME=null;try{sessionStorage.removeItem("pap_u")}catch(e){}setBar();
+ $("#app").innerHTML=`<div class="card" style="max-width:420px;margin:40px auto"><div style="font-weight:600;color:var(--mut);margin-bottom:10px">${FLAG}République de Djibouti · Présidence de la République</div><h2>Parc Auto Protocole</h2><div class="g"><label>Identifiant<input id="u" autocomplete="username" autocapitalize="none"></label><label>Mot de passe<input id="w" type="password" autocomplete="current-password"></label><div class="msg" id="msg"></div><button class="btn" id="go">Se connecter</button></div></div>`;
+ const go=()=>{const u=USERS.find(x=>x.id===$("#u").value.trim().toLowerCase()&&x.pw===$("#w").value);if(!u){$("#msg").textContent="Identifiant ou mot de passe incorrect.";return}ME=u;try{sessionStorage.setItem("pap_u",u.id)}catch(e){}setBar();home()};
+ $("#go").onclick=go;["#u","#w"].forEach(s=>$(s).onkeydown=e=>{if(e.key==="Enter")go()});
+}
+function home(){
+ const m=today().slice(0,7),inc=orders.filter(o=>o.checks.some(c=>!c)).length,last=[...orders].sort((a,b)=>a.date<b.date?1:-1).slice(0,3);
+ const st=(n,l)=>`<div class="card"><div style="font:700 32px Spectral,serif">${n}</div><div style="color:var(--mut)">${l}</div></div>`;
+ $("#app").innerHTML=`<h2>Bonjour, ${esc(ME.nom)}</h2><p style="color:var(--mut);margin:-6px 0 18px">République de Djibouti · Présidence de la République · Parc Auto Protocole</p>
+ <div class="g3" style="margin-bottom:16px">${st(orders.length,"ordres au total")}${st(orders.filter(o=>o.date.startsWith(m)).length,"ordres ce mois-ci")}${st(inc,"ordres avec contrôles incomplets")}</div>
+ <div class="t" style="margin-bottom:16px"><button class="btn" id="h1">Nouvel ordre</button><button class="btn o" id="h2">Voir la liste</button></div>
+ <div class="card"><b>Derniers ordres</b><div class="tw"><table><tr><th>N°</th><th>Date</th><th>Véhicule</th><th>Immat.</th><th>Contrôles</th></tr>${last.map(o=>`<tr><td>${pad(o.id)}</td><td>${fr(o.date)}</td><td>${esc(o.marque)} ${esc(o.modele)}</td><td>${esc(o.immat)}</td><td>${o.checks.filter(Boolean).length}/16</td></tr>`).join("")}</table></div></div>`;
+ $("#h1").onclick=()=>form();$("#h2").onclick=list;
+}
+$("#bh").onclick=home;$("#bn").onclick=()=>form();$("#bl").onclick=list;$("#bo").onclick=login;
+setBar();ME?home():login();
+</script></body></html>

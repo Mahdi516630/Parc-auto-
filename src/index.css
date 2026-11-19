@@ -1,0 +1,120 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --bg: #f4f5f8;
+  --fg: #0f1f3d;
+  --card: #ffffff;
+  --bd: #d5d9e2;
+  --mut: #4a5468;
+  --pri: #1d5f96;
+  --ink: #0b6b1f;
+  --inp: #f4f5f8;
+  --row: #e3e6ed;
+  --red: #d7141a;
+  --sky: #6ab2e7;
+  --djgreen: #12ad2b;
+}
+
+:root.dark {
+  --bg: #10162a;
+  --fg: #e8ebf4;
+  --card: #182040;
+  --bd: #2c3760;
+  --mut: #a7b0c8;
+  --pri: #2f7fc0;
+  --ink: #2f9a45;
+  --inp: #10162a;
+  --row: #26305a;
+  --red: #ef4444;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-padding-top: env(safe-area-inset-top, 0px);
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg);
+  color: var(--fg);
+  font-family: "Public Sans", system-ui, -apple-system, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-display {
+  font-family: "Spectral", Georgia, serif;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.tri-bar {
+  height: 8px;
+  background: linear-gradient(180deg, #6ab2e7 50%, #12ad2b 50%);
+}
+
+/* Official Print Sheet (.sheet) strictly matching Parc Auto Protocole specification */
+#print-root {
+  display: none;
+}
+
+.sheet {
+  color: #000000;
+  background: #ffffff;
+  font: 12pt Arial, sans-serif;
+  padding: 10mm;
+}
+
+.sheet table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 0;
+}
+
+.sheet th,
+.sheet td {
+  border: 1px solid #000000;
+  padding: 5px 8px;
+  color: #000000;
+  font-size: 11pt;
+  text-align: left;
+}
+
+.sheet th {
+  background: #f4f5f8;
+  font-weight: 700;
+}
+
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  body > *:not(#print-root) {
+    display: none !important;
+  }
+
+  #print-root {
+    display: block !important;
+  }
+
+  .sheet {
+    page-break-after: always;
+    break-after: page;
+    padding: 8mm;
+  }
+
+  .sheet:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Parc Auto Protocole",
+  "description": "Système de gestion des ordres de réparation et d'administration du Parc Auto Protocole — Présidence de la République de Djibouti.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
