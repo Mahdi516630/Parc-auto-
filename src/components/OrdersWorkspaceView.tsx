@@ -68,7 +68,7 @@ export const OrdersWorkspaceView: React.FC<OrdersWorkspaceViewProps> = ({
 
   // Filters & selection state
   const [period, setPeriod] = useState<PeriodFilter>('tout');
-  const [refDate, setRefDate] = useState<string>('2026-10-06');
+  const [refDate, setRefDate] = useState<string>(() => todayIso());
   const [sortDir, setSortDir] = useState<SortDirection>('desc');
   const [searchQuery, setSearchQuery] = useState('');
   const [authorFilter, setAuthorFilter] = useState<string>('all');

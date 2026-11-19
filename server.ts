@@ -103,23 +103,11 @@ function mkChecks(count: number): boolean[] {
   return Array.from({ length: CHECKLIST_ITEMS.length }, (_, i) => i < count);
 }
 
-function mkSpecificChecks(indices: number[]): boolean[] {
-  const set = new Set(indices);
-  return Array.from({ length: CHECKLIST_ITEMS.length }, (_, i) => set.has(i));
-}
-
-// --- Initial Seed Data ---
+// --- Initial Seed Data (Admin account only, zero sample orders/users) ---
 function createSeedDatabase(): DatabaseSchema {
   const now = new Date().toISOString();
   const mahdiPw = hashPassword('protocole2026');
-  const karimPw = hashPassword('protocole2026');
-  const dialloPw = hashPassword('protocole2026');
-  const mensahPw = hashPassword('protocole2026');
-
   const adminRole = DEFAULT_ROLES.find((r) => r.id === 'admin')!;
-  const gestRole = DEFAULT_ROLES.find((r) => r.id === 'gestionnaire')!;
-  const techRole = DEFAULT_ROLES.find((r) => r.id === 'technicien')!;
-  const ctrlRole = DEFAULT_ROLES.find((r) => r.id === 'controleur')!;
 
   const users: StoredUser[] = [
     {
@@ -131,197 +119,19 @@ function createSeedDatabase(): DatabaseSchema {
       roleId: 'admin',
       status: 'approved',
       permissions: { ...adminRole.permissions },
-      createdAt: '2026-07-15T08:00:00.000Z',
-      validatedAt: '2026-07-15T08:00:00.000Z',
+      createdAt: now,
+      validatedAt: now,
       validatedBy: 'Système',
       passwordSalt: mahdiPw.salt,
       passwordHash: mahdiPw.hash,
-    },
-    {
-      id: 'user-karim',
-      username: 'karim',
-      email: 'karim@presidence.dj',
-      fullName: 'Karim B.',
-      department: 'Logistique & Protocole',
-      roleId: 'gestionnaire',
-      status: 'approved',
-      permissions: { ...gestRole.permissions },
-      createdAt: '2026-07-18T09:30:00.000Z',
-      validatedAt: '2026-07-18T10:00:00.000Z',
-      validatedBy: 'Mahdi Yacoub Ali',
-      passwordSalt: karimPw.salt,
-      passwordHash: karimPw.hash,
-    },
-    {
-      id: 'user-mensah',
-      username: 'mensah',
-      email: 'mensah@presidence.dj',
-      fullName: 'M. Mensah',
-      department: 'Contrôle Technique',
-      roleId: 'controleur',
-      status: 'approved',
-      permissions: { ...ctrlRole.permissions },
-      createdAt: '2026-07-20T11:15:00.000Z',
-      validatedAt: '2026-07-20T11:45:00.000Z',
-      validatedBy: 'Mahdi Yacoub Ali',
-      passwordSalt: mensahPw.salt,
-      passwordHash: mensahPw.hash,
-    },
-    {
-      id: 'user-diallo',
-      username: 'diallo',
-      email: 'diallo@presidence.dj',
-      fullName: 'M. Diallo',
-      department: 'Atelier Mécanique',
-      roleId: 'technicien',
-      status: 'pending',
-      permissions: { ...techRole.permissions },
-      createdAt: now,
-      passwordSalt: dialloPw.salt,
-      passwordHash: dialloPw.hash,
-    },
-  ];
-
-  const orders: RepairOrder[] = [
-    {
-      id: 6,
-      date: '2026-11-12',
-      marque: 'Toyota',
-      modele: 'Land Cruiser V8',
-      immat: '101',
-      vin: 'JTMHV05J804192831',
-      km: 24800,
-      checks: mkChecks(16),
-      remarque: 'Contrôle protocolaire complet avant mission officielle.',
-      tech: 'M. Diallo',
-      ctrl: 'M. Mensah',
-      createdById: 'user-mahdi',
-      createdByName: 'Mahdi Yacoub Ali',
-      createdAt: '2026-11-12T08:10:00.000Z',
-      updatedAt: '2026-11-12T11:30:00.000Z',
-    },
-    {
-      id: 5,
-      date: '2026-10-19',
-      marque: 'Mercedes',
-      modele: 'Classe E',
-      immat: '115',
-      vin: 'WDD2130421A550912',
-      km: 41230,
-      checks: mkSpecificChecks([0, 1, 2, 4, 5, 7, 10, 11, 13, 14, 15]),
-      remarque: 'Climatisation rechargée, diagnostic électronique validé.',
-      tech: 'M. Diallo',
-      ctrl: 'M. Mensah',
-      createdById: 'user-karim',
-      createdByName: 'Karim B.',
-      createdAt: '2026-10-19T09:00:00.000Z',
-      updatedAt: '2026-10-19T13:15:00.000Z',
-    },
-    {
-      id: 4,
-      date: '2026-10-11',
-      marque: 'Renault',
-      modele: 'Talisman',
-      immat: '129',
-      vin: 'VF1RFD00161049211',
-      km: 19450,
-      checks: mkChecks(16),
-      remarque: 'Entretien périodique complet effectué.',
-      tech: 'M. Diallo',
-      ctrl: 'M. Mensah',
-      createdById: 'user-mahdi',
-      createdByName: 'Mahdi Yacoub Ali',
-      createdAt: '2026-10-11T07:50:00.000Z',
-      updatedAt: '2026-10-11T10:20:00.000Z',
-    },
-    {
-      id: 3,
-      date: '2026-10-06',
-      marque: 'Renault',
-      modele: 'Safrane',
-      immat: '121',
-      vin: 'VF1ABLACA3CC263895',
-      km: 14011,
-      checks: mkChecks(9),
-      remarque: 'Essai routier à effectuer après remplacement du démarreur.',
-      tech: 'M. Diallo',
-      ctrl: 'M. Mensah',
-      createdById: 'user-mahdi',
-      createdByName: 'Mahdi Yacoub Ali',
-      createdAt: '2026-10-06T08:45:00.000Z',
-      updatedAt: '2026-10-06T08:45:00.000Z',
-    },
-    {
-      id: 2,
-      date: '2026-09-22',
-      marque: 'Peugeot',
-      modele: '607',
-      immat: '118',
-      vin: 'VF39U3FZC92104821',
-      km: 52340,
-      checks: mkChecks(16),
-      remarque: 'Révision électrique complète effectuée et validée.',
-      tech: 'M. Diallo',
-      ctrl: 'M. Mensah',
-      createdById: 'user-karim',
-      createdByName: 'Karim B.',
-      createdAt: '2026-09-22T10:15:00.000Z',
-      updatedAt: '2026-09-22T14:20:00.000Z',
-    },
-    {
-      id: 1,
-      date: '2026-08-29',
-      marque: 'Mercedes',
-      modele: 'Classe S',
-      immat: '104',
-      vin: 'WDD2221821A409112',
-      km: 38720,
-      checks: mkChecks(14),
-      remarque: 'Contrôle batterie complémentaire programmé avant sortie officielle.',
-      tech: 'M. Diallo',
-      ctrl: 'M. Mensah',
-      createdById: 'user-mahdi',
-      createdByName: 'Mahdi Yacoub Ali',
-      createdAt: '2026-08-29T07:30:00.000Z',
-      updatedAt: '2026-08-29T16:10:00.000Z',
-    },
-  ];
-
-  const logs: ActivityLog[] = [
-    {
-      id: crypto.randomUUID(),
-      timestamp: now,
-      actorId: 'user-diallo',
-      actorName: 'M. Diallo',
-      action: 'register',
-      targetLabel: 'diallo@presidence.dj',
-      details: 'Demande d’inscription soumise (rôle demandé : Technicien)',
-    },
-    {
-      id: crypto.randomUUID(),
-      timestamp: '2026-11-12T08:10:00.000Z',
-      actorId: 'user-mahdi',
-      actorName: 'Mahdi Yacoub Ali',
-      action: 'order_created',
-      targetLabel: 'Ordre 0000006',
-      details: 'Toyota Land Cruiser V8 · Immat. 101',
-    },
-    {
-      id: crypto.randomUUID(),
-      timestamp: '2026-10-06T08:45:00.000Z',
-      actorId: 'user-mahdi',
-      actorName: 'Mahdi Yacoub Ali',
-      action: 'order_created',
-      targetLabel: 'Ordre 0000003',
-      details: 'Renault Safrane · Immat. 121',
     },
   ];
 
   return {
     users,
     roles: DEFAULT_ROLES.map((r) => ({ ...r, permissions: { ...r.permissions } })),
-    orders,
-    logs,
+    orders: [],
+    logs: [],
   };
 }
 

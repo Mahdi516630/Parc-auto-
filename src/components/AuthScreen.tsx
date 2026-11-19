@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Eye, EyeOff, KeyRound, Lock, ShieldCheck, UserPlus } from 'lucide-react';
+import { Eye, EyeOff, Lock, UserPlus } from 'lucide-react';
 import { ApiError, fetchPublicRoles, loginUser, registerUser, type PublicRoleOption } from '../api';
 import type { UserRecord } from '../types';
 import { DjiboutiFlag } from './DjiboutiFlag';
@@ -18,7 +18,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [roles, setRoles] = useState<PublicRoleOption[]>([]);
   const [showPassword, setShowPassword] = useState(false);
-  const [showDemoHints, setShowDemoHints] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -112,13 +111,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     }
   };
 
-  const fillDemoAccount = (idValue: string, pwValue: string) => {
-    setMode('login');
-    setIdentifier(idValue);
-    setLoginPassword(pwValue);
-    setError('');
-  };
-
   return (
     <div className="min-h-screen flex flex-col bg-[var(--bg)] text-[var(--fg)]">
       <div className="tri-bar w-full" />
@@ -194,7 +186,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                     autoCapitalize="none"
                     value={identifier}
                     onChange={(e) => setIdentifier(e.target.value)}
-                    placeholder="ex. mahdi ou karim@presidence.dj"
+                    placeholder="Identifiant ou adresse e-mail"
                     className="w-full min-h-[42px] px-3 py-2 rounded-md border border-[var(--bd)] bg-[var(--inp)] text-[var(--fg)] text-[15px] focus:outline-none focus:border-[var(--pri)]"
                   />
                 </div>
@@ -359,82 +351,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                   {loading ? 'Envoi de la demande…' : 'Soumettre mon inscription'}
                 </button>
               </form>
-            )}
-          </div>
-
-          {/* Discreet test credentials drawer */}
-          <div className="mt-4 bg-[var(--card)] border border-[var(--bd)] rounded-lg overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setShowDemoHints((v) => !v)}
-              className="w-full px-4 py-2.5 text-left text-xs font-semibold text-[var(--mut)] hover:text-[var(--fg)] flex items-center justify-between cursor-pointer"
-            >
-              <span className="flex items-center gap-2">
-                <KeyRound className="w-3.5 h-3.5 text-[var(--pri)]" />
-                Accès préconfigurés (test rapide des rôles)
-              </span>
-              <span>{showDemoHints ? 'Masquer' : 'Afficher'}</span>
-            </button>
-            {showDemoHints && (
-              <div className="px-4 pb-3 pt-1 border-t border-[var(--row)] space-y-2 text-xs">
-                <div className="flex items-center justify-between gap-2 py-1">
-                  <div>
-                    <div className="font-semibold text-[var(--fg)] flex items-center gap-1.5">
-                      <ShieldCheck className="w-3.5 h-3.5 text-[var(--pri)]" />
-                      Administrateur · Mahdi Yacoub Ali
-                    </div>
-                    <div className="text-[var(--mut)]">
-                      Identifiant : <span className="font-mono">mahdi</span> · Mot de passe :{' '}
-                      <span className="font-mono">protocole2026</span>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => fillDemoAccount('mahdi', 'protocole2026')}
-                    className="px-2.5 py-1.5 rounded border border-[var(--bd)] bg-[var(--inp)] font-semibold hover:border-[var(--pri)] cursor-pointer whitespace-nowrap"
-                  >
-                    Remplir
-                  </button>
-                </div>
-
-                <div className="flex items-center justify-between gap-2 py-1 border-t border-[var(--row)]">
-                  <div>
-                    <div className="font-semibold text-[var(--fg)]">
-                      Collaborateur validé · Karim B. (Gestionnaire)
-                    </div>
-                    <div className="text-[var(--mut)]">
-                      Identifiant : <span className="font-mono">karim</span> · Mot de passe :{' '}
-                      <span className="font-mono">protocole2026</span>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => fillDemoAccount('karim', 'protocole2026')}
-                    className="px-2.5 py-1.5 rounded border border-[var(--bd)] bg-[var(--inp)] font-semibold hover:border-[var(--pri)] cursor-pointer whitespace-nowrap"
-                  >
-                    Remplir
-                  </button>
-                </div>
-
-                <div className="flex items-center justify-between gap-2 py-1 border-t border-[var(--row)]">
-                  <div>
-                    <div className="font-semibold text-[var(--fg)]">
-                      Compte en attente · M. Diallo (Technicien)
-                    </div>
-                    <div className="text-[var(--mut)]">
-                      Identifiant : <span className="font-mono">diallo</span> · Mot de passe :{' '}
-                      <span className="font-mono">protocole2026</span>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => fillDemoAccount('diallo', 'protocole2026')}
-                    className="px-2.5 py-1.5 rounded border border-[var(--bd)] bg-[var(--inp)] font-semibold hover:border-[var(--pri)] cursor-pointer whitespace-nowrap"
-                  >
-                    Remplir
-                  </button>
-                </div>
-              </div>
             )}
           </div>
         </div>
